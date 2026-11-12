@@ -50,7 +50,7 @@ Resources:
               - Effect: Allow
                 Action: [s3:PutObject, s3:GetObject, s3:HeadObject]
                 Resource: !Sub "arn:aws:s3:::${Project}-corpus-${AWS::AccountId}/*"
-                - Effect: Allow
+            - Effect: Allow
                 # ListBucket on the bucket itself: without it, S3 answers
                 # HeadObject on a missing key with 403 instead of 404,
                 # so the worker's already-done marker check fails on a
