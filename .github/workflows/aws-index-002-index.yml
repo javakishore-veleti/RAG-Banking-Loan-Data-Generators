@@ -1,0 +1,63 @@
+name: AWS-Index-002 Index (reusable)
+
+# Shared bottom layer for all six document types. The per-format
+# workflows (aws-index-003-index-pdf.yml, aws-index-004-index-docx.yml,
+# …) are thin wrappers that call this one with a single format.
+# No per-format code is duplicated here — the loader, chunker,
+# enricher, Bedrock embedder, pgvector/OpenSearch stores, Batch job
+# and Step Functions machine are all shared.
+on:
+  workflow_call:
+    inputs:
+      format:
+        required: true
+        type: string
+      count:
+        required: false
+        type: number
+        default: 1000
+      year:
+        required: false
+        type: number
+        default: 2024
+      shard_size:
+        required: false
+        type: number
+        default: 100
+      seed:
+        required: false
+        type: number
+        default: 7
+      embedding_model:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_REGION:
+        required: true
+      AWS_ACCOUNT_ID:
+        required: true
+      PROJECT:
+        required: true
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Start Step Functions run for ${{ inputs.format }} / ${{ inputs.year }}
+        run: |
+          RUN_ID="${{ inputs.year }}-${{ inputs.format }}-index-$(date +%Y%m%d-%H%M%S)"
+          aws stepfunctions start-execution \
+            --state-machine-arn arn:aws:states:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:${{ secrets.PROJECT }}-index-run \
+            --name "$RUN_ID" \
+            --input "{\"bucket\": \"${{ secrets.PROJECT }}-corpus-${{ secrets.AWS_ACCOUNT_ID }}\", \"format\": \"${{ inputs.format }}\", \"year\": ${{ inputs.year }}, \"shard_size\": ${{ inputs.shard_size }}, \"seed\": ${{ inputs.seed }}, \"embedding_model\": \"${{ inputs.embedding_model }}\", \"run_id\": \"$RUN_ID\"}"
+          echo "Started index run $RUN_ID for format=${{ inputs.format }} year=${{ inputs.year }} embedding_model=${{ inputs.embedding_model }} (blank = config default)"
