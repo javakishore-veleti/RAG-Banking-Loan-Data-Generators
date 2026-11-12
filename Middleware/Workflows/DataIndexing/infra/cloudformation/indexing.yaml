@@ -55,7 +55,11 @@ Resources:
     Properties:
       DBInstanceIdentifier: !Sub "${Project}-index-db"
       Engine: postgres
-      EngineVersion: "15.8"
+      # NOTE: no EngineVersion pin. The template used to pin "15.8",
+      # but RDS in us-east-1 has no such version — AWS-Index-001 run
+      # #1 failed with "Cannot find version 15.8 for postgres"
+      # (2026-11-12). Leaving it unset takes the RDS default minor
+      # for Postgres 15, which is >= 15.4 and so supports pgvector.
       DBInstanceClass: !Ref DBInstanceClass
       AllocatedStorage: 20
       StorageEncrypted: true
