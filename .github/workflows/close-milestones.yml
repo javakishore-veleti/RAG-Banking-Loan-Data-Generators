@@ -1,0 +1,27 @@
+name: Close Milestones (manual)
+
+# One manual run closes M001 and M002 — but only once every issue
+# in them is closed. The script looks milestones up by title and
+# refuses to close one that still has open issues, so running it
+# early is harmless. Run it after the Close Issues workflow has
+# been verified (M001 12/12, M002 29/29). Uses the repo's own
+# GITHUB_TOKEN, so no per-item approvals.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close-milestones:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Close done milestones (M001, M002)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 scripts/close_milestones.py
