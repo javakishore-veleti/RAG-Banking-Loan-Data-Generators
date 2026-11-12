@@ -12,14 +12,14 @@ Dockerfile and their own deployments under their own folders.
 - **Entrypoint:** `src/worker/batch_worker.py` — polls SQS until
   the queue is empty, generates a 10k-record shard, uploads to
   S3 + DynamoDB.
-- **Built by:** the `provision-infra.yml` workflow (root
+- **Built by:** the `aws-001-provision-infra.yml` workflow (root
   `.github/workflows/`), which pushes `:latest` and the commit
   SHA tag to ECR. Rebuild on every infra deploy; the Batch job
   definition always points at `:latest`.
 
 ## CloudFormation stacks (deploy order)
 
-Deployed by `provision-infra.yml`, all manual:
+Deployed by `aws-001-provision-infra.yml`, all manual:
 
 1. `<project>-storage` — `infra/cloudformation/storage.yaml`
    (S3 corpus bucket, DynamoDB manifest + dedup, SQS FIFO + DLQ,
@@ -34,13 +34,14 @@ Deployed by `provision-infra.yml`, all manual:
 
 Triggered manually, one workflow per format, from the repo root:
 `.github/workflows/generate-<format>.yml` → shared reusable
-`generate.yml` → Step Functions → Planner Lambda → SQS →
+`aws-002-generate.yml` → Step Functions → Planner Lambda → SQS →
 AWS Batch (this image) → S3 + DynamoDB.
 
 ## Teardown (end of life, in order)
 
-1. `delete-data.yml` — empties the S3 corpus bucket, deletes
+1. `aws-009-delete-data.yml` — empties the S3 corpus bucket, deletes
    DynamoDB tables + SQS queues; CloudTrail last, so the
    deletion itself is audited.
-2. `destroy-infra.yml` — deletes the stacks in reverse order
-   (orchestration → compute → storage), ECR images first.
+2. `aws-010-destroy-infra.yml` — deletes the stacks in reverse order
+   (orchestration → compute → storage → vpc), ECR images first.
+   The vpc stack only exists if AWS-001 ran with `vpc_mode=create-new`.
