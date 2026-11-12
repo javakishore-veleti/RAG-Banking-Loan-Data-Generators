@@ -1,0 +1,551 @@
+# F016 — Real-artifact seeding.
+#
+# Every term, rate range and checklist item below was taken from a public
+# source listed in data/seeds/SEEDS.md. The `source` on each entry is the
+# seed ID from that manifest. Do not add invented terms: if a source
+# cannot be fetched, do not use its terms.
+#
+# Loaded by src/generator/generator.py at runtime. It tries PyYAML first
+# and falls back to a minimal built-in parser for this file's shape
+# (nested mappings, lists of scalars, lists of `text`/`source` mappings).
+# The generator works without this file — it falls back to its built-in
+# terms, rates and purposes.
+meta:
+  fetched: 2026-11-12
+  seed_manifest: data/seeds/SEEDS.md
+loan_types:
+  home:
+    label: Home Loan
+    rate_min: 7.4
+    rate_max: 9.8
+    rate_basis: linked to the repo rate
+    rate_note: SBI 7.50% onwards; HDFC 8.00% (7.45% special); ICICI 8.50-9.80%; PNB 7.45-9.35%; Bank of Baroda from 7.40%
+    rate_sources:
+      - SBI-HOME-01
+      - HDFC-HOME-01
+      - ICICI-HOME-01
+      - PNB-HOME-01
+      - BOB-01
+    tenures:
+      - 120
+      - 180
+      - 240
+      - 300
+      - 360
+    purposes:
+      - text: buying a flat
+        source: SBI-MITC-01
+      - text: buying a house
+        source: SBI-MITC-01
+      - text: home construction
+        source: SBI-MITC-01
+      - text: home renovation
+        source: SBI-MITC-01
+      - text: purchase of a plot of land
+        source: SBI-MITC-01
+      - text: home extension
+        source: HDFC-HOME-01
+      - text: balance transfer of a home loan
+        source: HDFC-HOME-01
+      - text: home improvement
+        source: HDFC-HOME-01
+    documents:
+      - text: PAN card
+        source: HDFC-HOME-01
+      - text: Aadhaar card
+        source: ICICI-HOME-01
+      - text: salary slips for the last 3 months
+        source: HDFC-HOME-01
+      - text: Form 16 for the last 2 years
+        source: HDFC-HOME-01
+      - text: bank statements for the last 6 months
+        source: HDFC-HOME-01
+      - text: sale agreement
+        source: HDFC-HOME-01
+      - text: title deed
+        source: HDFC-HOME-01
+      - text: approved building plan
+        source: HDFC-HOME-01
+      - text: encumbrance certificate
+        source: ICICI-HOME-01
+      - text: no-objection certificate from the builder or society
+        source: ICICI-HOME-01
+      - text: allotment letter
+        source: HDFC-HOME-01
+      - text: property tax receipts
+        source: ICICI-HOME-01
+    terms:
+      - text: equitable mortgage
+        source: SBI-MITC-01
+      - text: registered mortgage
+        source: SBI-MITC-01
+      - text: daily reducing balance
+        source: SBI-MITC-01
+      - text: monthly rests
+        source: SBI-MITC-01
+      - text: sanction letter
+        source: HDFC-HOME-01
+      - text: loan to value ratio
+        source: SBI-MITC-01
+      - text: Most Important Terms and Conditions (MITC)
+        source: SBI-MITC-01
+      - text: pre-approved home loan
+        source: HDFC-HOME-01
+    fees:
+      - text: processing fee up to 0.50% of the loan amount or Rs 4,000 whichever is higher plus GST
+        source: HDFC-HOME-01
+      - text: processing fee 0.35% of the loan amount (minimum Rs 2,500, maximum Rs 15,000) plus GST
+        source: PNB-HOME-01
+      - text: processing fee 0.50% of the loan amount plus applicable taxes
+        source: ICICI-HOME-01
+      - text: no prepayment penalty on floating-rate home loans
+        source: SBI-MITC-01
+      - text: conversion charge of 0.56% of the outstanding amount for switching from fixed to floating rate
+        source: SBI-MITC-01
+      - text: penal interest of 2% per annum on the irregular amount
+        source: SBI-MITC-01
+    prepayment: No prepayment penalty on floating-rate home loans
+  personal:
+    label: Personal Loan
+    rate_min: 9.99
+    rate_max: 24.0
+    rate_basis: linked to the 2-year MCLR
+    rate_note: HDFC 9.99-24.00%; SBI Xpress Credit 11.45-14.60%
+    rate_sources:
+      - HDFC-PERS-01
+      - SBI-PERS-01
+    tenures:
+      - 12
+      - 24
+      - 36
+      - 48
+      - 60
+      - 72
+    purposes:
+      - text: medical expenses
+        source: HDFC-PERS-01
+      - text: wedding expenses
+        source: HDFC-PERS-01
+      - text: education
+        source: HDFC-PERS-01
+      - text: debt consolidation
+        source: HDFC-PERS-01
+      - text: travel
+        source: HDFC-PERS-01
+      - text: home renovation
+        source: HDFC-PERS-01
+      - text: emergency expenses
+        source: HDFC-PERS-01
+    documents:
+      - text: PAN card
+        source: SBI-PERS-01
+      - text: Aadhaar card
+        source: HDFC-PERS-01
+      - text: salary slips for the last 6 months
+        source: SBI-PERS-01
+      - text: bank statements for the last 6 months
+        source: SBI-PERS-01
+      - text: income tax return
+        source: SBI-PERS-01
+      - text: passport-size photographs
+        source: SBI-PERS-01
+      - text: employer identity card
+        source: SBI-PERS-01
+      - text: irrevocable letter of authority to the salary disbursing authority
+        source: SBI-PERS-01
+    terms:
+      - text: daily reducing balance
+        source: SBI-PERS-01
+      - text: EMI to net monthly income ratio
+        source: SBI-PERS-01
+      - text: no security or guarantor required
+        source: SBI-PERS-01
+      - text: pre-approved Xpress Credit
+        source: SBI-PERS-01
+      - text: salary account
+        source: SBI-PERS-01
+    fees:
+      - text: processing fee up to 1.50% of the loan amount plus GST (minimum Rs 1,000, maximum Rs 15,000)
+        source: SBI-PERS-01
+      - text: prepayment charges of 3% of the prepaid amount
+        source: SBI-PERS-01
+      - text: penal interest of 2% per month on overdue amounts
+        source: SBI-PERS-01
+      - text: processing fee up to Rs 6,500 plus GST
+        source: HDFC-PERS-01
+      - text: late EMI payment penalty of 18% per annum plus tax on the overdue instalment
+        source: HDFC-PERS-01
+      - text: foreclosure fee of 2% to 4% of principal outstanding plus GST
+        source: HDFC-PERS-01
+    prepayment: Prepayment charges of 3% of the prepaid amount
+  business:
+    label: Business Loan
+    rate_min: 8.55
+    rate_max: 13.0
+    rate_basis: linked to the External Benchmark Lending Rate (EBLR)
+    rate_note: SBI SME cash credit 8.55-10.85%; SBI CGTMSE loan 8.90-11.25%; PNB MSME Sahyog 8.80-12.50%; PNB Udyog Mitra 9.25-13.00%; HDFC Business Growth Loan 10.75-22.50%
+    rate_sources:
+      - WC-01
+    tenures:
+      - 12
+      - 24
+      - 36
+      - 48
+      - 60
+    purposes:
+      - text: working capital
+        source: WC-01
+      - text: purchase of machinery and equipment
+        source: WC-01
+      - text: business expansion
+        source: WC-01
+      - text: inventory purchase
+        source: WC-01
+      - text: cash credit for working capital
+        source: WC-01
+      - text: stock purchase for a retail shop
+        source: MUDRA-02
+    documents:
+      - text: Udyam Registration Certificate
+        source: WC-01
+      - text: GST returns for the last 12 months
+        source: WC-01
+      - text: audited balance sheet and profit and loss account for the last 2 years
+        source: WC-01
+      - text: current account statements for the last 12 months
+        source: WC-01
+      - text: KYC documents of the promoters
+        source: WC-01
+      - text: detailed project report
+        source: WC-01
+      - text: trade licence or shop and establishment certificate
+        source: MUDRA-02
+    terms:
+      - text: cash credit
+        source: WC-01
+      - text: overdraft
+        source: WC-01
+      - text: working capital cycle
+        source: WC-01
+      - text: collateral-free up to Rs 2 crore under CGTMSE cover
+        source: WC-01
+      - text: Udyam Registration
+        source: WC-01
+      - text: interest subvention
+        source: WC-01
+      - text: Trade Receivables Discounting System (TReDS)
+        source: WC-01
+    fees:
+      - text: processing fee 0.50% to 1.00% of the loan granted
+        source: WC-01
+      - text: CGTMSE guarantee fee 0.37% to 1.35% per annum
+        source: WC-01
+      - text: renewal fee of Rs 2,000 to Rs 5,000 per annum on cash credit accounts
+        source: WC-01
+      - text: interest subvention of 2% per annum for Udyam-registered units
+        source: WC-01
+      - text: stamp duty of Rs 500 to Rs 5,000 depending on the state
+        source: WC-01
+  auto:
+    label: Auto Loan
+    rate_min: 7.85
+    rate_max: 15.5
+    rate_note: Bank of Baroda car loans from 7.85%; ICICI new car 8.35% onwards; ICICI used car 9.75% onwards, 12.25-15.50%
+    rate_sources:
+      - BOB-01
+      - ICICI-AUTO-01
+    tenures:
+      - 12
+      - 24
+      - 36
+      - 48
+      - 60
+      - 72
+      - 84
+    purposes:
+      - text: buying a car
+        source: ICICI-AUTO-01
+      - text: purchase of an electric vehicle
+        source: BOB-01
+      - text: purchase of a small goods transport vehicle
+        source: MUDRA-02
+      - text: purchase of an auto-rickshaw or e-rickshaw
+        source: MUDRA-02
+    documents:
+      - text: registration certificate (RC) book copy
+        source: ICICI-AUTO-01
+      - text: comprehensive insurance policy copy
+        source: ICICI-AUTO-01
+      - text: bank statement
+        source: ICICI-AUTO-01
+      - text: PAN card
+        source: ICICI-AUTO-01
+      - text: prepayment statement
+        source: ICICI-AUTO-01
+      - text: Form 35 for removal of hypothecation
+        source: ICICI-AUTO-01
+      - text: no-objection certificate (NOC)
+        source: ICICI-AUTO-01
+    terms:
+      - text: hypothecation of the vehicle
+        source: ICICI-AUTO-01
+      - text: no-objection certificate
+        source: ICICI-AUTO-01
+      - text: comprehensive insurance
+        source: ICICI-AUTO-01
+      - text: on-road price
+        source: ICICI-AUTO-01
+      - text: Form 35
+        source: ICICI-AUTO-01
+    prepayment: Prepayment needs a prepayment statement, a request letter, bank statements, PAN and the RC book copy
+  education:
+    label: Education Loan
+    rate_min: 8.0
+    rate_max: 14.0
+    rate_basis: linked to the External Benchmark Lending Rate (EBLR)
+    rate_note: IBA model scheme 8-12% (unsecured above Rs 7.5 lakh 10-14%); SBI 9.15-9.65% EBLR-linked
+    rate_sources:
+      - IBA-EDU-01
+      - SBI-EDU-01
+    tenures:
+      - 60
+      - 84
+      - 120
+      - 180
+    purposes:
+      - text: higher studies in India
+        source: IBA-EDU-01
+      - text: studies abroad
+        source: IBA-EDU-01
+      - text: professional course
+        source: IBA-EDU-01
+      - text: MBA programme abroad
+        source: IBA-EDU-01
+      - text: MS programme abroad
+        source: IBA-EDU-01
+      - text: skill development course
+        source: SBI-EDU-01
+    documents:
+      - text: admission letter with fee schedule
+        source: IBA-EDU-01
+      - text: marksheets for Class 10 and Class 12
+        source: IBA-EDU-01
+      - text: graduation mark sheets
+        source: IBA-EDU-01
+      - text: GRE/GMAT/IELTS/TOEFL score card
+        source: IBA-EDU-01
+      - text: passport and visa
+        source: SBI-EDU-01
+      - text: co-applicant salary slips for the last 3 months
+        source: SBI-EDU-01
+      - text: co-applicant Form 16 for the last 2 years
+        source: SBI-EDU-01
+      - text: co-applicant income tax returns for the last 2 years
+        source: IBA-EDU-01
+      - text: bank statements for the last 6 months
+        source: IBA-EDU-01
+      - text: property documents with chain of ownership for loans above Rs 7.5 lakh
+        source: IBA-EDU-01
+      - text: statement of assets and liabilities
+        source: IBA-EDU-01
+    terms:
+      - text: moratorium
+        source: IBA-EDU-01
+      - text: co-borrower
+        source: IBA-EDU-01
+      - text: simple interest during the moratorium
+        source: IBA-EDU-01
+      - text: Central Sector Interest Subsidy (CSIS)
+        source: IBA-EDU-01
+      - text: margin
+        source: IBA-EDU-01
+      - text: tangible collateral security
+        source: IBA-EDU-01
+      - text: Vidya Lakshmi Portal
+        source: IBA-EDU-01
+      - text: Rinn Raksha
+        source: SBI-EDU-01
+    fees:
+      - text: processing fee nil for domestic loans
+        source: IBA-EDU-01
+      - text: processing fee Rs 11,800 plus GST (non-refundable)
+        source: SBI-EDU-01
+      - text: no prepayment penalty after 6 months from disbursal
+        source: SBI-EDU-01
+      - text: 0.50% concession in interest rate for girl students
+        source: SBI-EDU-01
+    prepayment: No prepayment penalty after 6 months from disbursal
+  gold:
+    label: Gold Loan
+    rate_min: 9.15
+    rate_max: 16.0
+    rate_basis: linked to the 1-year MCLR
+    rate_note: SBI bullet 9.15%, EMI and overdraft 10.10% (1-year MCLR 8.70%); ICICI 9.00-16.00%
+    rate_sources:
+      - SBI-GOLD-01
+    tenures:
+      - 6
+      - 12
+      - 18
+      - 24
+      - 36
+    purposes:
+      - text: consumption loan against gold jewellery
+        source: RBI-GOLD-01
+      - text: loan against gold ornaments
+        source: RBI-GOLD-01
+      - text: pledge of gold coins
+        source: SBI-GOLD-01
+      - text: loan against silver jewellery
+        source: RBI-GOLD-01
+    documents:
+      - text: KYC documents such as PAN, Aadhaar, passport or voter ID
+        source: SBI-GOLD-01
+      - text: application form with 2 passport-size photographs
+        source: SBI-GOLD-01
+      - text: gold ornaments or jewellery for pledge
+        source: SBI-GOLD-01
+      - text: gold coins up to 50 grams
+        source: SBI-GOLD-01
+      - text: income documents for loans above Rs 2.5 lakh
+        source: SBI-GOLD-01
+      - text: assay certificate showing purity and net weight
+        source: RBI-GOLD-01
+    terms:
+      - text: loan to value ratio (LTV)
+        source: RBI-GOLD-01
+      - text: bullet repayment
+        source: RBI-GOLD-01
+      - text: assay certificate
+        source: RBI-GOLD-01
+      - text: IBJA price
+        source: RBI-GOLD-01
+      - text: pledge receipt
+        source: SBI-GOLD-01
+      - text: margin
+        source: SBI-GOLD-01
+    fees:
+      - text: processing fee 0.50% of the loan amount (minimum Rs 500, maximum Rs 10,000) plus GST
+        source: SBI-GOLD-01
+      - text: no prepayment or foreclosure charges
+        source: SBI-GOLD-01
+      - text: gold appraiser charges payable by the borrower
+        source: SBI-GOLD-01
+      - text: margin of 26% to 35% of the appraised value
+        source: SBI-GOLD-01
+    prepayment: No prepayment or foreclosure charges
+    amount_note: Gold is valued at the lower of the 30-day average price and the previous day's closing price published by IBJA, and the loan to value cap is 85% up to Rs 2.5 lakh, 80% up to Rs 5 lakh and 75% above Rs 5 lakh
+  msme:
+    label: MSME Loan
+    rate_min: 8.55
+    rate_max: 12.5
+    rate_basis: linked to the External Benchmark Lending Rate (EBLR)
+    rate_note: SBI SME cash credit 8.55-10.85%; PNB MSME Sahyog 8.80-12.50%; MUDRA Shishu 8.85-10%, Kishore 9-12%, Tarun 9.5-12%, Tarun Plus 10-12%
+    rate_sources:
+      - WC-01
+      - MUDRA-02
+    tenures:
+      - 12
+      - 24
+      - 36
+      - 60
+      - 84
+    purposes:
+      - text: working capital for MSME
+        source: WC-01
+      - text: machinery purchase
+        source: MUDRA-02
+      - text: opening a second outlet
+        source: MUDRA-02
+      - text: purchase of raw material
+        source: WC-01
+      - text: food processing unit
+        source: MUDRA-02
+      - text: tailoring unit
+        source: MUDRA-02
+    documents:
+      - text: Udyam Registration Certificate
+        source: WC-01
+      - text: GST certificate or trade licence
+        source: MUDRA-02
+      - text: bank statements for the last 6 months
+        source: MUDRA-02
+      - text: business plan or project report for Kishore and Tarun loans
+        source: MUDRA-02
+      - text: quotations for machinery or equipment
+        source: MUDRA-02
+      - text: Aadhaar card and PAN card
+        source: MUDRA-02
+      - text: 2 passport-size photographs
+        source: MUDRA-02
+    terms:
+      - text: Shishu loan
+        source: MUDRA-02
+      - text: Kishore loan
+        source: MUDRA-02
+      - text: Tarun loan
+        source: MUDRA-02
+      - text: Tarun Plus loan
+        source: MUDRA-02
+      - text: MUDRA Card
+        source: MUDRA-02
+      - text: priority sector lending
+        source: RBI-PSL-01
+      - text: collateral-free loan
+        source: MUDRA-02
+      - text: Udyam Registration
+        source: WC-01
+    fees:
+      - text: processing fee 0.50% to 1.00% of the loan granted
+        source: WC-01
+      - text: CGTMSE guarantee fee 0.37% to 1.35% per annum
+        source: WC-01
+      - text: 2% interest subvention on prompt repayment of Shishu loans
+        source: MUDRA-02
+common:
+  terms:
+    - text: MCLR - marginal cost of funds based lending rate
+      source: RBI-IR-01
+    - text: EBLR - external benchmark lending rate
+      source: RBI-IR-01
+    - text: repo rate
+      source: RBI-IR-01
+    - text: base rate
+      source: RBI-IR-01
+    - text: spread - the margin over the benchmark rate
+      source: RBI-IR-01
+    - text: monthly rests
+      source: RBI-IR-01
+    - text: daily reducing balance
+      source: SBI-MITC-01
+    - text: sanction letter
+      source: SBI-MITC-01
+    - text: Most Important Terms and Conditions (MITC)
+      source: SBI-MITC-01
+    - text: Key Fact Statement
+      source: RBI-GOLD-01
+    - text: CIBIL score
+      source: ICICI-HOME-01
+    - text: equated monthly instalment (EMI)
+      source: SBI-MITC-01
+    - text: Officially Valid Document (OVD)
+      source: RBI-KYC-01
+    - text: Central KYC Records Registry (CKYCR)
+      source: RBI-KYC-01
+    - text: beneficial owner
+      source: RBI-KYC-01
+    - text: priority sector lending
+      source: RBI-PSL-01
+  complaint_products:
+    - text: Mortgages
+      source: CFPB-01
+    - text: Auto Loans
+      source: CFPB-01
+    - text: Private Student Loans
+      source: CFPB-01
+    - text: Bank Accounts and Services
+      source: CFPB-01
+    - text: Credit Cards
+      source: CFPB-01
+    - text: Payday Loans
+      source: CFPB-01
