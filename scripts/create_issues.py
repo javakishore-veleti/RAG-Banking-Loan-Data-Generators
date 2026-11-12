@@ -21,9 +21,18 @@ Behaviour:
     85 stories, all with 3-digit IDs (M001, E001, F001, S001).
   - Creates the 5 milestones, the labels `epic` / `feature` / `story`
     (if missing), then the issues in order: epics, features, stories.
+  - Topical labels are added on top of the type label, per epic /
+    feature / story: aws, s3, dynamodb, sqs, batch, lambda,
+    step-functions, cloudformation, ecr, cloudwatch, cloudtrail,
+    datagen-wf, github-actions, infra-setup, infra-destroy,
+    data-delete, generator, format-pdf/docx/xlsx/csv/txt/png,
+    manifest, partitioning, uniqueness, dedup, realism, testing,
+    docs, observability. See TOPIC_LABELS below.
   - Idempotent: issues are skipped if an issue with the same title
     already exists (E001–E007 were created earlier by hand and are
-    skipped, not duplicated). Safe to re-run.
+    skipped, not duplicated). Safe to re-run. On a re-run, existing
+    issues are PATCHed with their (new) labels + milestone, so a
+    label change is applied to already-created issues too.
   - Links children as GitHub sub-issues of their parent when the
     API supports it; the body also names the parent, so the link
     survives even if the sub-issue call fails.
@@ -134,6 +143,56 @@ if len(milestones) != 5 or len(epics) != 9 or len(features) != 33 or sum(len(f['
 print(f"Parsed: {len(milestones)} milestones, {len(epics)} epics, "
       f"{len(features)} features, {sum(len(f['stories']) for f in features)} stories")
 
+# --- Topical labels --------------------------------------------------------
+# Type labels (epic/feature/story) are added separately. These are the
+# additional labels, per epic and per feature. Stories inherit their
+# feature's topical labels.
+EPIC_LABELS = {
+    "E001": ["generator"],
+    "E002": ["generator", "format-pdf", "format-docx", "format-xlsx", "format-csv", "format-txt", "format-png"],
+    "E003": ["manifest", "s3", "partitioning"],
+    "E004": ["uniqueness"],
+    "E005": ["realism"],
+    "E006": ["dedup", "dynamodb", "s3"],
+    "E007": ["aws", "cloudformation", "infra-setup", "s3", "dynamodb", "sqs", "cloudtrail"],
+    "E008": ["aws", "datagen-wf", "github-actions", "batch", "lambda", "step-functions", "sqs"],
+    "E009": ["observability", "cloudwatch", "testing", "docs", "infra-destroy", "data-delete"],
+}
+FEATURE_LABELS = {
+    "F001": ["generator"], "F002": ["generator"], "F003": ["generator"],
+    "F004": ["format-pdf"], "F005": ["format-docx"], "F006": ["format-xlsx"],
+    "F007": ["format-csv"], "F008": ["format-txt"], "F009": ["format-png"],
+    "F010": ["manifest", "s3"], "F011": ["s3", "partitioning"],
+    "F012": ["datagen-wf"],
+    "F013": ["uniqueness"], "F014": ["uniqueness"], "F015": ["uniqueness"],
+    "F016": ["realism"], "F017": ["realism"], "F018": ["realism"],
+    "F019": ["dedup", "dynamodb"], "F020": ["dedup"], "F021": ["dedup"],
+    "F022": ["aws", "cloudformation", "infra-setup", "s3"],
+    "F023": ["aws", "cloudformation", "infra-setup", "batch", "ecr"],
+    "F024": ["aws", "cloudformation", "infra-setup", "lambda", "step-functions"],
+    "F031": ["aws", "cloudtrail", "observability"],
+    "F025": ["github-actions", "datagen-wf"],
+    "F026": ["aws", "sqs", "lambda"],
+    "F027": ["aws", "batch", "sqs"],
+    "F028": ["observability", "cloudwatch"],
+    "F029": ["testing"], "F030": ["docs"],
+    "F032": ["infra-destroy", "github-actions", "cloudformation"],
+    "F033": ["data-delete", "s3", "dynamodb"],
+}
+LABEL_COLORS = {
+    "epic": "5319e7", "feature": "0e8a16", "story": "fbca04",
+    "aws": "ff9900", "s3": "569a31", "dynamodb": "4053d6", "sqs": "ff4f8b",
+    "batch": "7f3fbf", "lambda": "ff9900", "step-functions": "7f3fbf",
+    "cloudformation": "ff9900", "ecr": "569a31", "cloudwatch": "e36209",
+    "cloudtrail": "e36209", "datagen-wf": "0e8a16", "github-actions": "2088ff",
+    "infra-setup": "5319e7", "infra-destroy": "d73a4a", "data-delete": "d73a4a",
+    "generator": "1d76db", "manifest": "bfdadc", "partitioning": "bfdadc",
+    "uniqueness": "c2e0c6", "dedup": "c2e0c6", "realism": "c2e0c6",
+    "testing": "0e8a16", "docs": "0075ca", "observability": "e36209",
+    "format-pdf": "d73a4a", "format-docx": "1d76db", "format-xlsx": "0e8a16",
+    "format-csv": "fbca04", "format-txt": "bfdadc", "format-png": "5319e7",
+}
+
 # --- Existing state (idempotency) -------------------------------------------
 existing = {i["title"]: i for i in paged("/issues")}
 print(f"Existing issues in repo: {len(existing)}")
@@ -156,16 +215,27 @@ for mid, title, desc in milestones:
         print(f"FAILED milestone {mid}: {status} {ms}")
 
 # --- Labels -----------------------------------------------------------------
-for name, color in [("epic", "5319e7"), ("feature", "0e8a16"), ("story", "fbca04")]:
+for name, color in LABEL_COLORS.items():
     status, _ = api("POST", "/labels", {"name": name, "color": color})
     print(f"Label {name}: {'created' if status in (200, 201) else 'exists'}")
 
 # --- Issues -----------------------------------------------------------------
-def create_issue(title, body, label, milestone_id):
+def create_issue(title, body, labels, milestone_id):
+    """Create an issue, or PATCH an existing one with its labels/milestone.
+
+    Re-running after a label change must update already-created issues,
+    not skip them silently — otherwise new labels never land.
+    """
+    payload_labels = labels
     if title in existing:
-        print(f"Skip (exists): {title}")
-        return existing[title]
-    payload = {"title": title, "body": body, "labels": [label]}
+        issue = existing[title]
+        status, _ = api("PATCH", f"/issues/{issue['number']}",
+                        {"labels": payload_labels,
+                         **({"milestone": ms_numbers[milestone_id]}
+                            if milestone_id in ms_numbers else {})})
+        print(f"Updated (exists): {title} labels={payload_labels} ({status})")
+        return issue
+    payload = {"title": title, "body": body, "labels": payload_labels}
     if milestone_id in ms_numbers:
         payload["milestone"] = ms_numbers[milestone_id]
     status, issue = api("POST", "/issues", payload)
@@ -194,7 +264,7 @@ for eid, e in sorted(epics.items()):
         f"**Type:** Epic\n**Scope:** Synthetic data generation only. "
         f"No RAG ingestion, chunking, embedding, or retrieval.\n\n"
         f"See GITHUB_ISSUES.md for the features and stories in this epic.",
-        "epic", e["milestone"])
+        ["epic"] + EPIC_LABELS.get(eid, []), e["milestone"])
     if issue:
         created_epics[eid] = issue
 
@@ -206,7 +276,7 @@ for f in features:
         f"## Feature — {f['id']} {f['title']}\n\n**Parent epic:** {parent_ref} ({f['epic']})\n"
         f"**Milestone:** {f['milestone']}\n**Type:** Feature\n\n"
         + "\n".join(f"- **{sid}** {stext}" for sid, stext in f["stories"]),
-        "feature", f["milestone"])
+        ["feature"] + FEATURE_LABELS.get(f["id"], []), f["milestone"])
     if issue and epic_issue:
         add_sub_issue(epic_issue, issue)
     for sid, stext in f["stories"]:
@@ -215,7 +285,7 @@ for f in features:
             f"## Story — {sid}\n\n**Parent feature:** "
             f"#{issue['number'] if issue else '?'} ({f['id']} — {f['title']})\n"
             f"**Milestone:** {f['milestone']}\n**Type:** Story\n\n{stext}",
-            "story", f["milestone"])
+            ["story"] + FEATURE_LABELS.get(f["id"], []), f["milestone"])
         if story and issue:
             add_sub_issue(issue, story)
 
