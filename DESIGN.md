@@ -632,7 +632,11 @@ model and the stores never have to know where it came from.
   once (`probe_dimensions`) and cached per run.
 
 Resolution order: workflow input `embedding_model` → per-format
-override → default. Failover: if Bedrock rejects the resolved model
+override → default. The per-format workflows (AWS-Index-003…008)
+expose the model as a dropdown (`default` plus the four known models)
+in the Run workflow dialog; `default` is normalised to empty by
+AWS-Index-002, so the config resolution applies. Choosing a model for
+a run never needs a config edit. Failover: if Bedrock rejects the resolved model
 (AccessDenied / Validation / NotFound — typically model access not
 enabled in the console), the embedder tries the default model once
 and records the model actually used. If the default is also rejected,
