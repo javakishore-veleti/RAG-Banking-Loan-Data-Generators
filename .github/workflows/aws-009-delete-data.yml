@@ -2,8 +2,12 @@ name: AWS-009 Delete Data (manual — DANGER)
 
 # Manual only, end of life. Run this BEFORE aws-010-destroy-infra.yml.
 # CloudFormation cannot delete a non-empty S3 bucket, so this workflow
-# empties the corpus bucket and deletes the DynamoDB tables and queues
-# first. CloudTrail is left until last, so the deletion itself is audited.
+# empties the corpus bucket and the CloudTrail log bucket and deletes
+# the DynamoDB tables and queues first. Both buckets are versioned, so
+# emptying must delete every object version and delete marker — a plain
+# `aws s3 rm --recursive` only removes current versions and leaves the
+# bucket non-empty. CloudTrail is left until last, so the deletion
+# itself is audited.
 on:
   workflow_dispatch:
     inputs:
@@ -33,11 +37,25 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-      - name: Empty corpus S3 bucket (all versions + delete markers)
+      - name: Empty S3 buckets (all versions + delete markers)
         run: |
-          BUCKET=$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}
-          aws s3 rm s3://$BUCKET --recursive
-          echo "Emptied s3://$BUCKET — run aws-010-destroy-infra.yml next to delete the bucket itself."
+          empty_bucket() {
+            BUCKET=$1
+            aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null || { echo "Bucket $BUCKET does not exist — skipping."; return 0; }
+            echo "Emptying s3://$BUCKET (all versions + delete markers) ..."
+            while true; do
+              aws s3api list-object-versions --bucket "$BUCKET" --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json > /tmp/vers.json
+              aws s3api list-object-versions --bucket "$BUCKET" --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' --output json > /tmp/markers.json
+              N_V=$(python3 -c "import json; d=json.load(open('/tmp/vers.json')); print(len(d.get('Objects') or []))")
+              N_M=$(python3 -c "import json; d=json.load(open('/tmp/markers.json')); print(len(d.get('Objects') or []))")
+              if [ "$N_V" = "0" ] && [ "$N_M" = "0" ]; then echo "s3://$BUCKET is empty."; break; fi
+              [ "$N_V" != "0" ] && aws s3api delete-objects --bucket "$BUCKET" --delete file:///tmp/vers.json --output text
+              [ "$N_M" != "0" ] && aws s3api delete-objects --bucket "$BUCKET" --delete file:///tmp/markers.json --output text
+            done
+          }
+          empty_bucket "$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}"
+          empty_bucket "$PROJECT-trail-${{ secrets.AWS_ACCOUNT_ID }}"
+          echo "Both buckets emptied — run aws-010-destroy-infra.yml next to delete the stacks."
       - name: Delete DynamoDB tables
         run: |
           aws dynamodb delete-table --table-name $PROJECT-manifest || true
