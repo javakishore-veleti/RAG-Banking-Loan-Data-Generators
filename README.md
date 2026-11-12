@@ -554,6 +554,8 @@ editor) with the docs as context:
   uniqueness and dedup design, extensibility, open questions.
 - `GITHUB_ISSUES_INDEXING.md` — issues plan for the indexing phase
   (M006/M007, E010–E014, F034–F046, S086–S120, 55 issues).
+  - `AWS_Services_Usage.md` — what each AWS service does in this project,
+    the exact resource names, and when each part runs.
 - `uniqueness_report.md` — measured before/after uniqueness numbers
   (in the goal files, alongside the generator).
 
