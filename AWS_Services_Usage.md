@@ -54,70 +54,126 @@ theory — it describes the stacks that are actually deployed in us-east-1.
 
 ## 2. AWS Step Functions
 
-Two Standard state machines, one per pipeline. Each machine has exactly
-two states. Both are created by the provision workflows and are
-**Active**. You never start an execution by hand in the console —
-start it from GitHub Actions (the workflows below), and check it with
-AWS-011 (see §18).
+Step Functions is AWS's way of running a job in steps, in order, and
+knowing whether it finished. Think of it as a recipe: step 1 runs, then
+step 2 runs, and Step Functions keeps track of where the run is.
 
-### 2.1 `rag-corpus-run` — generate documents (Datagen)
+In this project there are two such recipes, called *state machines*.
+One makes the documents, the other indexes them. Each machine has
+exactly two steps. Both were created by the provision workflows
+(AWS-001 and AWS-Index-001) and both are **Active** — meaning they are
+ready to run. You do not need to touch the console to run them: you
+start them from GitHub Actions, and you check them with AWS-011
+(see §18).
 
-| Item | Value |
-|---|---|
-| State machine | `rag-corpus-run` |
-| Created by | AWS-001 (orchestration stack `rag-corpus-orchestration`) |
-| Started by | AWS-002, through the wrappers AWS-003–AWS-008 (one per format) |
-| Execution name | `<year>-<format>-<YYYYMMDD-HHMMSS>`, e.g. `2024-pdf-20261112-194138` |
+### 2.1 `rag-corpus-run` — make the documents (Datagen)
 
-States:
+**Purpose.** Create a batch of synthetic loan documents (PDF, DOCX,
+XLSX, CSV, TXT or PNG) and store them in S3, so the RAG system has
+something to answer questions from.
 
-| Step | Type | What it does | When it runs |
-|---|---|---|---|
-| `CustomerCase-PlanShards` | Lambda:invoke → `rag-corpus-planner` | Splits the run into work batches (shards of 10,000 records) and puts one SQS message per shard on `rag-corpus-shards.fifo`. Retries up to 3× (5s, backoff 2.0). | First, on every generate execution. |
-| `CustomerCase-SubmitBatchWorkers` | Batch:submitJob.sync → job `rag-corpus-worker` | Runs one Batch worker job that drains the SQS queue and generates the documents into S3. The `.sync` means the state waits until the Batch job finishes. Retries up to 3× (10s, backoff 2.0). | Second, after the shards are queued. |
+**What it does, step by step.**
 
-Run it when you want to **generate a corpus**: a new format, a new year,
-or a test batch. One execution per format + year. Start it from the
-Actions tab: AWS-003 (PDF), AWS-004 (DOCX), AWS-005 (XLSX), AWS-006
-(CSV), AWS-007 (TXT) or AWS-008 (PNG), with `count`, `year`,
-`shard_size` (default 10000) and `seed` (default 7).
+1. `CustomerCase-PlanShards` — plan the work. A small Lambda function
+   (`rag-corpus-planner`) splits the requested amount into batches of
+   10,000 records and puts one message per batch onto a queue. For
+   example, 100 documents = 1 batch; 200,000 documents = 20 batches.
+   If this step fails it tries again, up to 3 times.
+2. `CustomerCase-SubmitBatchWorkers` — do the work. Step Functions
+   starts one Batch job (`rag-corpus-worker`) that takes the batches off
+   the queue one by one and writes the documents into S3. The job runs
+   on Fargate Spot (cheap, short-lived compute). The step *waits* for
+   the job to finish before the machine ends — that is what `.sync`
+   means. If this step fails it tries again, up to 3 times, each time
+   starting a fresh Batch job.
 
-### 2.2 `rag-corpus-index-run` — index documents (DataIndexing)
+**How it is set up in Step Functions.** It is a *Standard* state
+machine (the normal type — it keeps a full history of every step and
+lets you see what happened). It lives in the orchestration stack
+`rag-corpus-orchestration`. Its full name is `rag-corpus-run`. The two
+steps above are the whole machine — there is nothing else in it.
 
-| Item | Value |
-|---|---|
-| State machine | `rag-corpus-index-run` |
-| Created by | AWS-Index-001 (orchestration stack `rag-corpus-index-orchestration`) |
-| Started by | AWS-Index-002, through the wrappers AWS-Index-003–AWS-Index-008 |
-| Execution name | `<year>-<format>-index-<YYYYMMDD-HHMMSS>`, e.g. `2024-pdf-index-20261112-195007` |
+**How it starts.** From GitHub Actions, not from the console. Run one
+of the wrappers — AWS-003 (PDF), AWS-004 (DOCX), AWS-005 (XLSX),
+AWS-006 (CSV), AWS-007 (TXT) or AWS-008 (PNG) — and fill in `count`
+(how many documents), `year`, `shard_size` (default 10000) and `seed`
+(default 7). The workflow starts an *execution* (one run of the
+machine), named `<year>-<format>-<date>-<time>`, e.g.
+`2024-pdf-20261112-194138`.
 
-States:
+**How often does it run?** Only when you start it. There is no
+schedule and nothing runs automatically. Run it whenever you need
+documents: a new format, a new year, or a test batch.
 
-| Step | Type | What it does | When it runs |
-|---|---|---|---|
-| `CustomerCase-PlanShards` | Lambda:invoke → `rag-corpus-index-planner` | Lists the documents already in S3 under `raw/<format>/year=<year>/`, splits them into shards of 100 documents, and puts one SQS message per shard on `rag-corpus-index-shards.fifo`. Retries up to 3× (5s, backoff 2.0). | First, on every index execution. |
-| `CustomerCase-SubmitBatchWorkers` | Batch:submitJob.sync → job `rag-corpus-indexer` | Runs one Batch indexer job that drains the queue and indexes the documents: load → chunk → enrich (metadata) → Bedrock embed → pgvector (and OpenSearch if enabled). The `.sync` means the state waits until the Batch job finishes. Retries up to 3× (10s, backoff 2.0). | Second, after the shards are queued. |
+**Can it run multiple times?** Yes — as many times as you like. Every
+execution gets a unique name (the date and time are part of it), so
+runs never collide. Re-running the same format and year is also safe:
+each batch is marked with a done-marker in S3, and a batch that is
+already done is skipped instead of being generated again.
 
-Run it **after documents exist in S3** for that format + year — it indexes
-what is already in the bucket, it does not generate anything. One
-execution per format + year. Start it from the Actions tab:
-AWS-Index-003 (PDF) through AWS-Index-008 (PNG), with `count`
-(informational), `year`, `shard_size` (default 100), `seed` and
-`embedding_model` (a dropdown, default = the configured default model).
+**What if it fails?** See §2.3 below.
+
+### 2.2 `rag-corpus-index-run` — index the documents (DataIndexing)
+
+**Purpose.** Make the documents searchable: read the loan documents
+that are already in S3, split them into chunks, add metadata, turn
+each chunk into a vector with Bedrock, and store the vectors in the
+PostgreSQL database (pgvector) so the RAG system can find the right
+chunks when someone asks a question.
+
+**What it does, step by step.**
+
+1. `CustomerCase-PlanShards` — plan the work. A Lambda function
+   (`rag-corpus-index-planner`) lists the documents already in S3
+   under `raw/<format>/year=<year>/`, splits them into batches of 100
+   documents, and puts one message per batch onto a queue. If this
+   step fails it tries again, up to 3 times.
+2. `CustomerCase-SubmitBatchWorkers` — do the work. Step Functions
+   starts one Batch job (`rag-corpus-indexer`) that takes the batches
+   off the queue and, for each document, loads it, chunks it, adds
+   metadata, embeds it with Bedrock and stores it in pgvector (and in
+   OpenSearch, if that is switched on). Like the other machine, the
+   step waits for the job to finish, and retries up to 3 times.
+
+**How it is set up in Step Functions.** A Standard state machine,
+created by the orchestration stack `rag-corpus-index-orchestration`.
+Its full name is `rag-corpus-index-run`. Same two-step shape as the
+generator — plan, then run one Batch job.
+
+**How it starts.** From GitHub Actions: AWS-Index-003 (PDF) through
+AWS-Index-008 (PNG). Fill in `count` (only used as a hint),
+`year`, `shard_size` (default 100), `seed` and `embedding_model`
+(a dropdown — pick a model, or leave `default`). The execution is
+named `<year>-<format>-index-<date>-<time>`, e.g.
+`2024-pdf-index-20261112-195007`.
+
+**How often does it run?** Only when you start it. There is no
+schedule. Run it **after** the documents for that format and year
+exist in S3 — it indexes what is already there; it never creates
+documents.
+
+**Can it run multiple times?** Yes. Every execution has a unique
+name. Running it again over the same documents is safe: chunks are
+identified by their document, position and model, so re-indexing
+writes the same chunks again instead of duplicating them. Re-run it
+when you want to index with a different embedding model (that creates
+a separate vector table per model) or to pick up new documents.
+
+**What if it fails?** See §2.3 below.
 
 ### 2.3 What happens when a step fails
 
-Retries stack: a state retries up to 3×, and each retry submits a **new**
-Batch job, which itself retries its container up to 3×. So a persistently
-failing step can run up to 9 containers before the execution finally
-turns **Failed** — and the execution shows **Running** the whole time,
-because Step Functions is still retrying. That is by design (a
-one-off failure recovers on its own), but for a deterministic error
-(a code bug, a missing permission) the retries just repeat the failure:
-read the Batch job's CloudWatch log for the real error instead of
-waiting them out. A GitHub Actions run going green only means the
-execution *started*, not that it finished — AWS-011 is the run whose
-result means done (see §18).
+Retries stack up: a step retries up to 3 times, and every retry starts
+a **new** Batch job, which itself tries up to 3 times. So one bad step
+can run up to 9 containers before the execution finally turns
+**Failed**. While the retries are still going, the execution shows
+**Running** — that does not mean the work is progressing, only that
+Step Functions has not given up yet. A one-off glitch fixes itself
+this way; a real bug (a code error, a missing permission) just fails
+nine times in a row. So do not wait the retries out — read the Batch
+job's CloudWatch log to see the actual error. And remember: a green
+tick on the GitHub Actions run only means the execution *started*.
+To know whether it finished, run AWS-011 (see §18).
 
 ## 3. AWS Batch
 
