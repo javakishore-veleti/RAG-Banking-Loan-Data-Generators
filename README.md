@@ -582,7 +582,9 @@ phase (§16) — this phase only builds the indexes they read.
 `default_model` (`amazon.titan-embed-text-v2:0`, 1024 dims) and optional
 per-format overrides (`pdf: cohere.embed-english-v3`, …; `null` means
 "use the default"). Resolution order: workflow input
-`embedding_model` → per-format override → default. If a configured
+`embedding_model` → per-format override → default. When you run
+AWS-Index-003…008, the run dialog shows a dropdown of the models —
+pick one for that run, or leave `default` to use the config. If a configured
 model is rejected by Bedrock (not enabled / access denied), the
 embedder fails over to the default model once and records the model
 actually used in the chunk metadata. Enable Bedrock model access in
