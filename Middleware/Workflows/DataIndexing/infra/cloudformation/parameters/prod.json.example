@@ -1,0 +1,1 @@
+{"DBInstanceClass":"db.t4g.micro","DBName":"ragindex","EnableOpenSearch":"false","MaxVcpus":64,"MultiAZ":"false","Project":"rag-corpus","SecurityGroupIds":"sg-0123456789abcdef0","SubnetIds":"subnet-11111111,subnet-22222222","VpcId":"vpc-0123456789abcdef0"}
