@@ -1,0 +1,48 @@
+name: AWS-Index-006 Index CSV (manual)
+
+# Manual trigger, one document type at a time.
+# Actions -> AWS-Index-006 Index CSV -> Run workflow, pick count + year.
+# This is a thin wrapper: all code lives in the shared aws-index-002-index.yml,
+# indexer, Bedrock embedder and Batch job. Nothing is duplicated per format.
+# Embedding model: leave blank to use config/embedding_models.yaml
+# (per-format override, else the default model).
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Documents to index for this format (planner lists S3 keys; count is informational)"
+        required: true
+        default: "100"
+      year:
+        description: "Loan year (S3 year=YYYY partition)"
+        required: true
+        default: "2024"
+      shard_size:
+        description: "Documents per shard"
+        required: false
+        default: "100"
+      seed:
+        description: "Seed (kept for parity with Datagen runs)"
+        required: false
+        default: "7"
+      embedding_model:
+        description: "Optional: Bedrock embedding model id (blank = config default for this format)"
+        required: false
+        default: ""
+
+jobs:
+  index:
+    uses: ./.github/workflows/aws-index-002-index.yml
+    with:
+      format: csv
+      count: ${{ inputs.count }}
+      year: ${{ inputs.year }}
+      shard_size: ${{ inputs.shard_size }}
+      seed: ${{ inputs.seed }}
+      embedding_model: ${{ inputs.embedding_model }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      PROJECT: ${{ secrets.PROJECT }}
