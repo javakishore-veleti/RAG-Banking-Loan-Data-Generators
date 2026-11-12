@@ -4,8 +4,9 @@ name: AWS-Index-003 Index PDF (manual)
 # Actions -> AWS-Index-003 Index PDF -> Run workflow, pick count + year.
 # This is a thin wrapper: all code lives in the shared aws-index-002-index.yml,
 # indexer, Bedrock embedder and Batch job. Nothing is duplicated per format.
-# Embedding model: leave blank to use config/embedding_models.yaml
-# (per-format override, else the default model).
+# Embedding model: pick it in the Run workflow dialog (a dropdown).
+# 'default' uses config/embedding_models.yaml (per-format override,
+# else the default model) — no file edit needed to choose a model.
 on:
   workflow_dispatch:
     inputs:
@@ -26,9 +27,16 @@ on:
         required: false
         default: "7"
       embedding_model:
-        description: "Optional: Bedrock embedding model id (blank = config default for this format)"
+        description: "Embedding model for this run. 'default' = use config/embedding_models.yaml (per-format override, else amazon.titan-embed-text-v2:0). Pick a model to override it for this run only — no file edit needed."
         required: false
-        default: ""
+        type: choice
+        default: "default"
+        options:
+          - "default"
+          - "amazon.titan-embed-text-v2:0"
+          - "amazon.titan-embed-text-v1:0"
+          - "cohere.embed-english-v3"
+          - "cohere.embed-multilingual-v3"
 
 jobs:
   index:
