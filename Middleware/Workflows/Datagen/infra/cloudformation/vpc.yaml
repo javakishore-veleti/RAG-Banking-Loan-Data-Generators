@@ -134,7 +134,7 @@ Resources:
   BatchSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub "${Project} Batch tasks — outbound only"
+      GroupDescription: !Sub "${Project} Batch tasks - outbound only"
       VpcId: !Ref Vpc
       SecurityGroupEgress:
         - IpProtocol: "-1"
