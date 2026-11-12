@@ -282,7 +282,7 @@ or desirable — in a single domain.
 In GitHub: **Actions → AWS-001 Provision Infra → Run workflow.**
 
 Inputs: `project` (default `rag-corpus`), `max_vcpus` (default `64`),
-`vpc_mode` (`use-existing` or `create-new`, default `use-existing`) —
+`vpc_mode` (`create-new` or `use-existing`, default `create-new`) —
 see §8 for the VPC choice.
 
 What it does, in order:
@@ -358,30 +358,32 @@ Never hard-code these in the repo.
 | `AWS_REGION` | `ap-south-1` | All workflows |
 | `AWS_ACCOUNT_ID` | `123456789012` | Provision + generate |
 | `PROJECT` | `rag-corpus` | All workflows |
-| `VPC_ID` | `vpc-0123456789abcdef0` | Provision (compute stack) |
-| `SUBNET_IDS` | `subnet-aaa,subnet-bbb` | Provision (compute stack) |
-| `SECURITY_GROUP_IDS` | `sg-0123456789abcdef0` | Provision (compute stack) |
+| `VPC_ID` | `vpc-0123456789abcdef0` | Provision, only if `vpc_mode=use-existing` |
+| `SUBNET_IDS` | `subnet-aaa,subnet-bbb` | Provision, only if `vpc_mode=use-existing` |
+| `SECURITY_GROUP_IDS` | `sg-0123456789abcdef0` | Provision, only if `vpc_mode=use-existing` |
 
 An example parameter file is at
 `Middleware/Workflows/Datagen/infra/cloudformation/parameters/prod.json.example` — copy it, fill
 in your values, and do **not** commit the filled-in copy.
 
-### VPC: use an existing one, or let AWS-001 create one
+### VPC: let AWS-001 create one, or use an existing one
 
 When you run **AWS-001 Provision Infra** you pick `vpc_mode`:
 
-- **`use-existing` (default):** the compute stack uses `VPC_ID` /
-  `SUBNET_IDS` / `SECURITY_GROUP_IDS` from the secrets above — or
-  the `vpc_id` / `subnet_ids` / `security_group_ids` run inputs,
-  which win over the secrets. If none are set, the run fails and
-  tells you which secret or input is missing.
-- **`create-new`:** AWS-001 first deploys
+- **`create-new` (default):** AWS-001 first deploys
   `infra/cloudformation/vpc.yaml` (`$PROJECT-vpc` stack: a VPC,
   two private subnets for Batch, a NAT gateway, a security group)
-  and uses its outputs — no VPC secrets needed. The NAT gateway
-  costs ~$32/month + data while the stack exists; **AWS-010
-  Destroy Infra** deletes it. Use this when you have no VPC yet
-  and just want the pipeline up.
+  and uses its outputs — you configure nothing: no VPC, subnet or
+  security group secrets needed. The NAT gateway costs ~$32/month
+  + data while the stack exists; **AWS-010 Destroy Infra** deletes
+  it. This is the normal path when you have no VPC yet and just
+  want the pipeline up.
+- **`use-existing`:** only if you already have a VPC you want to
+  reuse. The compute stack then uses `VPC_ID` / `SUBNET_IDS` /
+  `SECURITY_GROUP_IDS` from the secrets above — or the `vpc_id` /
+  `subnet_ids` / `security_group_ids` run inputs, which win over
+  the secrets. If none are set, the run fails and tells you which
+  secret or input is missing.
 
 AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
 `AWS_REGION`, `AWS_ACCOUNT_ID`) always come from the secrets
