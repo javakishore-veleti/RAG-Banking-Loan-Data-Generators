@@ -1,0 +1,38 @@
+# Embedding models for DataIndexing — one per document type, with a default.
+#
+# How resolution works (see src/indexer/embedding_config.py):
+#   1. workflow_dispatch input `embedding_model` (if given — wins)
+#   2. the per-format entry below (if set — otherwise the format uses the default)
+#   3. `default_model`
+#
+# A format entry of `null` means "use the default model". Add an override
+# only when a format genuinely needs a different model. All models below
+# are Amazon Bedrock embedding models — enable model access in the Bedrock
+# console (one time) before the first AWS-Index run, or the embedder will
+# fail over to the default model and record that in the chunk metadata.
+#
+# Known dimensions (pgvector creates one vector table per model slug):
+#   amazon.titan-embed-text-v2:0  -> 1024 dims (default; cheap, good quality)
+#   amazon.titan-embed-text-v1    -> 1536 dims
+#   cohere.embed-english-v3       -> 1024 dims
+#   cohere.embed-multilingual-v3  -> 1024 dims
+
+default_model: amazon.titan-embed-text-v2:0
+
+# Per-format overrides. `null` = use default_model.
+formats:
+  pdf: null
+  docx: null
+  xlsx: null
+  csv: null
+  txt: null
+  png: null
+
+# Dimension lookup for models the config may reference. If you add a model
+# id that is not listed here, the embedder asks Bedrock for one embedding
+# first and measures the vector length instead (see embedder.py).
+dimensions:
+  amazon.titan-embed-text-v2:0: 1024
+  amazon.titan-embed-text-v1: 1536
+  cohere.embed-english-v3: 1024
+  cohere.embed-multilingual-v3: 1024
