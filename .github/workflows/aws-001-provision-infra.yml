@@ -11,16 +11,18 @@ name: AWS-001 Provision Infra (manual)
 # missing the run fails at the first step with a message naming it.
 #
 # VPC — pick one when you run it (vpc_mode):
-#   use-existing (default): VPC/subnets/SG come from the
+#   create-new (default): deploys infra/cloudformation/vpc.yaml
+#     first ($PROJECT-vpc stack: VPC + 2 private subnets + NAT
+#     gateway + security group) and uses its outputs. You configure
+#     nothing — no VPC, subnet or security group secrets needed.
+#     NOTE: the NAT gateway costs ~$32/month + data while the stack
+#     exists; AWS-010 Destroy Infra deletes it.
+#   use-existing: VPC/subnets/SG come from the
 #     VPC_ID / SUBNET_IDS / SECURITY_GROUP_IDS secrets, or from the
 #     vpc_id / subnet_ids / security_group_ids run inputs below
-#     (inputs win over secrets). Missing values fail the run with a
+#     (inputs win over secrets). Only pick this if you already have
+#     a VPC you want to reuse. Missing values fail the run with a
 #     message saying which secret or input to set.
-#   create-new: deploys infra/cloudformation/vpc.yaml first
-#     ($PROJECT-vpc stack: VPC + 2 private subnets + NAT gateway +
-#     security group) and uses its outputs. NOTE: the NAT gateway
-#     costs ~$32/month + data while the stack exists; AWS-010
-#     Destroy Infra deletes it.
 on:
   workflow_dispatch:
     inputs:
@@ -33,10 +35,10 @@ on:
         required: false
         default: "64"
       vpc_mode:
-        description: "VPC source: use-existing (secrets/inputs) or create-new (deploy vpc.yaml)"
+        description: "VPC source: create-new (default, deploy vpc.yaml — nothing to configure) or use-existing (secrets/inputs)"
         required: true
         type: choice
-        default: "use-existing"
+        default: "create-new"
         options:
           - use-existing
           - create-new
