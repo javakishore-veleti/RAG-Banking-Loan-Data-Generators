@@ -23,6 +23,21 @@ name: AWS-001 Provision Infra (manual)
 #     (inputs win over secrets). Only pick this if you already have
 #     a VPC you want to reuse. Missing values fail the run with a
 #     message saying which secret or input to set.
+#
+# ORDER MATTERS: the storage stack must deploy BEFORE the Planner
+# Lambda is packaged, because packaging uploads planner.zip into the
+# corpus bucket. The old order packaged first with an `aws s3 mb`
+# fallback that created the bucket outside any stack — the storage
+# changeset then failed on AWS::EarlyValidation::ResourceExistenceCheck
+# (run #3, 2026-11-12), and the zip never uploaded either. A guarded
+# cleanup step before the storage deploy removes that orphan bucket
+# only when it is empty and the storage stack never completed.
+# Same kind of ordering bug, fixed the same day: the worker image
+# used to be built and pushed BEFORE the compute stack deployed, but
+# the ECR repo is created by the compute stack — so the push would
+# fail with "repository does not exist". Build/push now runs AFTER
+# the compute deploy. The JobDefinition only references the image
+# URI, so deploying compute first is fine.
 on:
   workflow_dispatch:
     inputs:
@@ -112,11 +127,35 @@ jobs:
           echo "SECURITY_GROUP_IDS=$SECURITY_GROUP_IDS" >> $GITHUB_ENV
           echo "VPC resolved: $VPC_ID (subnets/SG not shown)"
 
-      - name: Package Planner Lambda
+      - name: Remove orphan empty corpus bucket (if any)
+        # Guarded self-heal for one specific past failure: AWS-001
+        # used to package the Planner Lambda BEFORE the storage stack
+        # deployed, and its `aws s3 mb` fallback created the corpus
+        # bucket outside any stack. That orphan bucket then failed the
+        # storage changeset (ResourceExistenceCheck). This step only
+        # deletes the bucket when ALL of these hold: the storage stack
+        # has never reached CREATE_COMPLETE, the bucket exists, and the
+        # bucket is EMPTY (no objects, no versions). A bucket with data
+        # is never touched — the step fails loudly instead.
         run: |
-          cd Middleware/Workflows/Datagen/src/planner && zip -r ../../../../../planner.zip . && cd ../../../../..
-          aws s3 cp planner.zip s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}/lambda/planner.zip \
-            || aws s3 mb s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} --region $AWS_REGION
+          BUCKET=$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}
+          STATUS=$(aws cloudformation describe-stacks --stack-name $PROJECT-storage --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "NO-STACK")
+          if [ "$STATUS" = "CREATE_COMPLETE" ]; then
+            echo "Storage stack is CREATE_COMPLETE — bucket is stack-owned, nothing to clean."
+            exit 0
+          fi
+          if ! aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
+            echo "Bucket $BUCKET does not exist — nothing to clean."
+            exit 0
+          fi
+          COUNT=$(aws s3api list-object-versions --bucket "$BUCKET" --query 'length(Versions || `[]`) + length(DeleteMarkers || `[]`)' --output text 2>/dev/null || echo "UNKNOWN")
+          if [ "$COUNT" = "0" ]; then
+            echo "Orphan empty bucket $BUCKET found (storage stack status: $STATUS) — deleting it so the storage stack can create it."
+            aws s3api delete-bucket --bucket "$BUCKET"
+          else
+            echo "::error::Bucket $BUCKET already exists with $COUNT object(s)/version(s) and the storage stack is $STATUS. Empty it first (AWS-009 Delete Data), then re-run AWS-001."
+            exit 1
+          fi
 
       - name: Deploy storage stack
         run: |
@@ -126,12 +165,15 @@ jobs:
             --parameter-overrides Project=$PROJECT \
             --capabilities CAPABILITY_NAMED_IAM
 
-      - name: Build and push worker image
+      - name: Package Planner Lambda
+        # Runs AFTER the storage stack: the zip is uploaded into the
+        # corpus bucket the stack just created. No `aws s3 mb` fallback
+        # — creating the bucket here is what broke the storage deploy
+        # (see the cleanup step above). If the upload fails, the run
+        # fails loudly instead of silently continuing without the zip.
         run: |
-          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com
-          docker build -t $PROJECT-worker:$GITHUB_SHA -f Middleware/Workflows/Datagen/Dockerfile Middleware/Workflows/Datagen
-          docker tag $PROJECT-worker:$GITHUB_SHA ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-worker:latest
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-worker:latest
+          cd Middleware/Workflows/Datagen/src/planner && zip -r ../../../../../planner.zip . && cd ../../../../..
+          aws s3 cp planner.zip s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}/lambda/planner.zip
 
       - name: Deploy compute stack (VPC resolved above)
         run: |
@@ -145,6 +187,16 @@ jobs:
               MaxVcpus=${{ inputs.max_vcpus }} \
             --capabilities CAPABILITY_NAMED_IAM
 
+      - name: Build and push worker image
+        # Runs AFTER the compute stack: the ECR repo is created by
+        # compute.yaml, so pushing before it deploys fails with
+        # "repository does not exist".
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com
+          docker build -t $PROJECT-worker:$GITHUB_SHA -f Middleware/Workflows/Datagen/Dockerfile Middleware/Workflows/Datagen
+          docker tag $PROJECT-worker:$GITHUB_SHA ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-worker:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-worker:latest
+
       - name: Deploy orchestration stack
         run: |
           aws cloudformation deploy \
@@ -152,5 +204,4 @@ jobs:
             --stack-name $PROJECT-orchestration \
             --parameter-overrides Project=$PROJECT \
               LambdaCodeBucket=$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} \
-              LambdaCodeKey=lambda/planner.zip \
-            --capabilities CAPABILITY_NAMED_IAM
+              LambdaCodeKey=lambda/planner.zip
