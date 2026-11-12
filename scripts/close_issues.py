@@ -79,7 +79,7 @@ CLOSE = (
 
 def api(method, path, payload=None):
     token = os.environ["GITHUB_TOKEN"]
-    repo = os.environ.get("GH_REPO", "javakishore-veleti/RAG-Banking-Data-Generators")
+    repo = os.environ.get("GH_REPO", "javakishore-veleti/RAG-Banking-Loan-Data-Generators")
     req = urllib.request.Request(
         f"https://api.github.com/repos/{repo}{path}",
         method=method,

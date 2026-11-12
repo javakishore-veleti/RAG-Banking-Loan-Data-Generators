@@ -12,7 +12,7 @@ Usage (GitHub Actions — see .github/workflows/create-issues.yml):
     python3 scripts/create_issues.py
 
 Usage (local, with a PAT — one token, no per-issue approvals):
-    GH_TOKEN=<token> GH_REPO=javakishore-veleti/RAG-Banking-Data-Generators \
+    GH_TOKEN=<token> GH_REPO=javakishore-veleti/RAG-Banking-Loan-Data-Generators \
         python3 scripts/create_issues.py
 
 Behaviour:
@@ -46,7 +46,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-REPO = os.environ.get("GH_REPO", "javakishore-veleti/RAG-Banking-Data-Generators")
+REPO = os.environ.get("GH_REPO", "javakishore-veleti/RAG-Banking-Loan-Data-Generators")
 TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
 if not TOKEN:
     sys.exit("Set GITHUB_TOKEN (Actions) or GH_TOKEN (local PAT) before running.")
