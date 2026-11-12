@@ -1,0 +1,301 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RAG indexing — storage + compute stack: RDS PostgreSQL (pgvector), SQS FIFO + DLQ, DynamoDB index manifest, ECR, AWS Batch Fargate Spot. VPC/subnets come from AWS-001 (shared $PROJECT-vpc stack, secrets, or create-new in the provision workflow). OpenSearch Serverless (BM25 keyword index) is optional."
+Parameters:
+  Project:
+    Type: String
+    Default: rag-corpus
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+  MaxVcpus:
+    Type: Number
+    Default: 64
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  DBName:
+    Type: String
+    Default: ragindex
+  MultiAZ:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: "true for production (RDS Multi-AZ failover); false for learning (cheaper)."
+  EnableOpenSearch:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: "true adds an OpenSearch Serverless collection (IDX-4 BM25 index) for hybrid search."
+Conditions:
+  EnableOpenSearchCond: !Equals [!Ref EnableOpenSearch, "true"]
+  MultiAZCond: !Equals [!Ref MultiAZ, "true"]
+Resources:
+  # RDS master password — generated, stored in Secrets Manager, read by
+  # the Batch worker at start. Never in GitHub secrets, never in code.
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${Project}-index-db"
+      Description: "RDS master password for the pgvector index database."
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "ragindex"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "${Project} index DB subnets"
+      SubnetIds: !Ref SubnetIds
+  IndexDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "${Project}-index-db"
+      Engine: postgres
+      EngineVersion: "15.8"
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: 20
+      StorageEncrypted: true
+      DBName: !Ref DBName
+      MasterUsername: ragindex
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DBSecret}:SecretString:password}}"
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups: !Ref SecurityGroupIds
+      PubliclyAccessible: false
+      MultiAZ: !If [MultiAZCond, true, false]
+      DeletionProtection: false
+  IndexManifestTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Project}-index-manifest"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: chunk_id
+          AttributeType: S
+        - AttributeName: doc_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: chunk_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: doc_id-index
+          KeySchema:
+            - AttributeName: doc_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+  IndexShardsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Project}-index-shards-dlq.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      MessageRetentionPeriod: 1209600
+  IndexShardsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Project}-index-shards.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 3600
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt IndexShardsDLQ.Arn
+        maxReceiveCount: 3
+  IndexerRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${Project}-indexer"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: batch.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
+  BatchTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${Project}-index-batch-task"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+                Resource:
+                  - !Sub "arn:aws:s3:::${Project}-corpus-${AWS::AccountId}"
+                  - !Sub "arn:aws:s3:::${Project}-corpus-${AWS::AccountId}/*"
+              - Effect: Allow
+                Action: [dynamodb:PutItem, dynamodb:BatchWriteItem]
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Project}-index-manifest"
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${Project}-index-shards.fifo"
+              - Effect: Allow
+                Action: [bedrock:InvokeModel]
+                Resource: "*"
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Ref DBSecret
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/batch/*"
+              - Effect: Allow
+                Action: [aoss:APIAccessAll]
+                Resource: !Sub "arn:aws:aoss:${AWS::Region}:${AWS::AccountId}:collection/*"
+  BatchExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  ComputeEnv:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      ComputeEnvironmentName: !Sub "${Project}-index-fargate-spot"
+      Type: MANAGED
+      State: ENABLED
+      ComputeResources:
+        Type: FARGATE_SPOT
+        MaxvCpus: !Ref MaxVcpus
+        Subnets: !Ref SubnetIds
+        SecurityGroupIds: !Ref SecurityGroupIds
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+  JobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      JobQueueName: !Sub "${Project}-index-queue"
+      State: ENABLED
+      Priority: 1
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref ComputeEnv
+  JobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: !Sub "${Project}-indexer"
+      Type: container
+      PlatformCapabilities: [FARGATE]
+      RetryStrategy:
+        Attempts: 3
+      ContainerProperties:
+        Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${IndexerRepo}:latest"
+        JobRoleArn: !GetAtt BatchTaskRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        ResourceRequirements:
+          - Type: VCPU
+            Value: "2"
+          - Type: MEMORY
+            Value: "4096"
+        Environment:
+          - Name: CORPUS_BUCKET
+            Value: !Sub "${Project}-corpus-${AWS::AccountId}"
+          - Name: INDEX_MANIFEST_TABLE
+            Value: !Sub "${Project}-index-manifest"
+          - Name: QUEUE_URL
+            Value: !Ref IndexShardsQueue
+          - Name: DB_HOST
+            Value: !GetAtt IndexDB.Endpoint.Address
+          - Name: DB_NAME
+            Value: !Ref DBName
+          - Name: DB_USER
+            Value: ragindex
+          - Name: DB_SECRET_ARN
+            Value: !Ref DBSecret
+          - Name: OPENSEARCH_ENDPOINT
+            Value: !If [EnableOpenSearchCond, !GetAtt SearchCollection.CollectionEndpoint, ""]
+          - Name: OPENSEARCH_ENABLED
+            Value: !Ref EnableOpenSearch
+          - Name: AWS_REGION
+            Value: !Ref AWS::Region
+        LogConfiguration:
+          LogDriver: awslogs
+  # Optional OpenSearch Serverless collection (IDX-4 BM25 keyword index).
+  SearchCollection:
+    Type: AWS::OpenSearchServerless::Collection
+    Condition: EnableOpenSearchCond
+    Properties:
+      Name: !Sub "${Project}-chunks"
+      Type: SEARCH
+      Description: "BM25 keyword index for hybrid search (IDX-4)."
+  SearchEncryptionPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Condition: EnableOpenSearchCond
+    Properties:
+      Name: !Sub "${Project}-chunks-enc"
+      Type: encryption
+      Policy: !Sub '{"Rules":[{"ResourceType":"collection","Resource":["collection/${Project}-chunks"]}],"AWSOwnedKey":true}'
+  SearchNetworkPolicy:
+    Type: AWS::OpenSearchServerless::SecurityPolicy
+    Condition: EnableOpenSearchCond
+    Properties:
+      Name: !Sub "${Project}-chunks-net"
+      Type: network
+      Policy: !Sub '[{"Rules":[{"ResourceType":"collection","Resource":["collection/${Project}-chunks"]}],"AllowFromPublic":true}]'
+  SearchAccessPolicy:
+    Type: AWS::OpenSearchServerless::AccessPolicy
+    Condition: EnableOpenSearchCond
+    Properties:
+      Name: !Sub "${Project}-chunks-access"
+      Type: data
+      Policy: !Sub
+        - '[{"Rules":[{"ResourceType":"index","Resource":["index/${Project}-chunks/*"],"Permission":["aoss:CreateIndex","aoss:DeleteIndex","aoss:UpdateIndex","aoss:DescribeIndex","aoss:ReadDocument","aoss:WriteDocument"]}],"Principal":["${TaskRoleArn}"],"Description":"indexer worker"}]'
+        - TaskRoleArn: !GetAtt BatchTaskRole.Arn
+Outputs:
+  IndexDBEndpoint:
+    Value: !GetAtt IndexDB.Endpoint.Address
+    Export:
+      Name: !Sub "${Project}-IndexDBEndpoint"
+  IndexDBSecretArn:
+    Value: !Ref DBSecret
+    Export:
+      Name: !Sub "${Project}-IndexDBSecretArn"
+  IndexQueueUrl:
+    Value: !Ref IndexShardsQueue
+    Export:
+      Name: !Sub "${Project}-IndexQueueUrl"
+  IndexManifestTable:
+    Value: !Ref IndexManifestTable
+    Export:
+      Name: !Sub "${Project}-IndexManifestTable"
+  RepositoryUrl:
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${IndexerRepo}"
+    Export:
+      Name: !Sub "${Project}-IndexRepositoryUrl"
+  JobQueueArn:
+    Value: !Ref JobQueue
+    Export:
+      Name: !Sub "${Project}-IndexJobQueueArn"
+  JobDefinitionArn:
+    Value: !Ref JobDefinition
+    Export:
+      Name: !Sub "${Project}-IndexJobDefinitionArn"
+  OpenSearchEndpoint:
+    Condition: EnableOpenSearchCond
+    Value: !GetAtt SearchCollection.CollectionEndpoint
+    Export:
+      Name: !Sub "${Project}-OpenSearchEndpoint"
