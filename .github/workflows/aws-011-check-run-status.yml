@@ -185,8 +185,8 @@ jobs:
           else
             DOCS=$(aws s3 ls "s3://$BUCKET/raw/${{ inputs.format }}/year=${{ inputs.year }}/" --recursive | wc -l)
             echo "Documents in S3 (raw/${{ inputs.format }}/year=${{ inputs.year }}/): $DOCS"
-            MANIFEST=$(aws s3 ls "s3://$BUCKET/manifests/${{ inputs.format }}-${{ inputs.year }}.jsonl" 2>/dev/null | wc -l)
-            if [ "$MANIFEST" = "1" ]; then echo "Ground-truth manifest present: manifests/${{ inputs.format }}-${{ inputs.year }}.jsonl"; fi
+            MANIFEST=$(aws s3 ls "s3://$BUCKET/manifests/${{ steps.resolve.outputs.execution_name }}/" --recursive 2>/dev/null | wc -l)
+            echo "Ground-truth manifest files for this run (manifests/${{ steps.resolve.outputs.execution_name }}/): $MANIFEST"
           fi
 
       - name: Fail the run if the execution failed
