@@ -11,13 +11,13 @@ name: Inspect CloudFormation Stack (reusable + manual)
 #   2. Batch logs: pass log_stream (a CloudWatch log stream name, e.g.
 #      rag-corpus-indexer/default/<task-id>) to dump that container's
 #      log events — the step that names the real error when a Step
-#      Functions execution fails at SubmitBatchWorkers.
+#      Functions execution fails at CustomerCase-SubmitBatchWorkers.
 #   3. Batch job logs: pass job_queue + job_name (e.g. rag-corpus-queue
 #      + rag-corpus-worker) to find the latest job of that name and dump
 #      its log, when you don't know the log stream name.
 #   4. RDS logs: pass rds_instance (e.g. rag-corpus-index-db) to print
 #      the instance status/endpoint and the PostgreSQL log's FATAL lines.
-#   3. Reusable: another workflow calls it with `uses:
+#   5. Reusable: another workflow calls it with `uses:
 #      ./.github/workflows/inspect-cloudformation-stack.yml` and passes
 #      `stack_name` plus the three AWS secrets below.
 #
@@ -154,7 +154,7 @@ jobs:
       - name: Fetch Batch CloudWatch logs (if a log stream was given)
         # Dumps the CloudWatch log events for one Batch job log stream —
         # the step that names the real error when a Step Functions
-        # execution fails at SubmitBatchWorkers (the execution history
+        # execution fails at CustomerCase-SubmitBatchWorkers (the execution history
         # only says the container exited). Batch's default log group
         # is /aws/batch/job. Read-only.
         if: ${{ inputs.log_stream != '' }}
@@ -201,11 +201,11 @@ jobs:
           aws rds describe-db-instances --db-instance-identifier "$DB" --query 'DBInstances[0].{Status:DBInstanceStatus,Engine:Engine,Version:EngineVersion,Endpoint:Endpoint.Address}' --output table || echo "describe-db-instances failed for $DB."
           echo "== Newest log files =="
           aws rds describe-db-log-files --db-instance-identifier "$DB" --max-records 5 --query 'DescribeDBLogFiles[].{Name:LogFileName,Size:Size,LastWritten:LastWritten}' --output table || echo "describe-db-log-files failed for $DB."
-          LOG=$(aws rds describe-db-log-files --db-instance-identifier "$DB" --max-records 1 --query 'DescribeDBLogFiles[0].LogFileName' --output text)
-          if [ -n "$LOG" ] && [ "$LOG" != "None" ]; then
+          LOGS=$(aws rds describe-db-log-files --db-instance-identifier "$DB" --query "sort_by(DescribeDBLogFiles[?starts_with(LogFileName, 'error/postgresql.log.')], &LastWritten)[-2:].LogFileName" --output text)
+          for LOG in $LOGS; do
             echo "== FATAL/ERROR lines in $LOG =="
             DATA=$(aws rds download-db-log-file-portion --db-instance-identifier "$DB" --log-file-name "$LOG" --starting-token 0 --max-items 500 --query 'LogFileData' --output text)
             echo "$DATA" | grep -E "FATAL|ERROR|PANIC" | tail -60
-            echo "== Last 40 lines of $LOG =="
-            echo "$DATA" | tail -40
-          fi
+            echo "== Last 25 lines of $LOG =="
+            echo "$DATA" | tail -25
+          done
