@@ -1,0 +1,47 @@
+name: AWS-Index-010 Destroy (manual — DANGER)
+
+# Manual only, end of life. Run this to tear down everything the
+# indexing provision workflow created. It is deliberately hard to run
+# by accident: workflow_dispatch + a typed confirmation input.
+# Order is reverse of provision: orchestration -> indexing stack.
+# Index data must be deleted first (see aws-index-009-delete-index-data.yml).
+# The shared $PROJECT-vpc stack is NOT deleted here — Datagen's
+# AWS-010 Destroy Infra deletes it (it may still serve Datagen).
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project prefix"
+        required: true
+        default: "rag-corpus"
+      confirm:
+        description: "Type DESTROY-INDEX to confirm"
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  PROJECT: ${{ inputs.project }}
+
+jobs:
+  destroy:
+    if: inputs.confirm == 'DESTROY-INDEX'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Delete orchestration stack
+        run: aws cloudformation delete-stack --stack-name $PROJECT-index-orchestration
+      - name: Delete indexing stack
+        run: |
+          aws cloudformation wait stack-delete-complete --stack-name $PROJECT-index-orchestration
+          aws ecr delete-repository --repository-name $PROJECT-indexer --force || true
+          aws cloudformation delete-stack --stack-name $PROJECT-indexing
+          aws cloudformation wait stack-delete-complete --stack-name $PROJECT-indexing
+          echo "Indexing teardown complete. The shared VPC stack is deleted by Datagen AWS-010, not here."
