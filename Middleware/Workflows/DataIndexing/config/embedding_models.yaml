@@ -1,7 +1,8 @@
 # Embedding models for DataIndexing — one per document type, with a default.
 #
 # How resolution works (see src/indexer/embedding_config.py):
-#   1. workflow_dispatch input `embedding_model` (if given — wins)
+#   1. the Run workflow dialog's Embedding model dropdown (pick a model
+#      to override for one run; 'default' leaves this step empty)
 #   2. the per-format entry below (if set — otherwise the format uses the default)
 #   3. `default_model`
 #
