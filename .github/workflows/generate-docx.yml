@@ -1,0 +1,41 @@
+name: Generate docx (manual)
+
+# Manual trigger, one document type at a time.
+# Actions -> Generate docx -> Run workflow, pick count + year.
+# This is a thin wrapper: all code lives in the shared generate.yml,
+# generator, worker and Batch job. Nothing is duplicated per format.
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Records to generate for this format (e.g. 200000 per annum)"
+        required: true
+        default: "1000"
+      year:
+        description: "Loan year (S3 yyyy/mm/dd partition)"
+        required: true
+        default: "2024"
+      shard_size:
+        description: "Records per shard"
+        required: false
+        default: "10000"
+      seed:
+        description: "Seed (deterministic generation)"
+        required: false
+        default: "7"
+
+jobs:
+  generate:
+    uses: ./.github/workflows/generate.yml
+    with:
+      format: docx
+      count: ${{ inputs.count }}
+      year: ${{ inputs.year }}
+      shard_size: ${{ inputs.shard_size }}
+      seed: ${{ inputs.seed }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      PROJECT: ${{ secrets.PROJECT }}

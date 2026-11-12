@@ -1,0 +1,79 @@
+name: Provision Infra (manual)
+
+# Manual only. Run this once (and again when infra changes) from
+# Actions -> Provision Infra -> Run workflow.
+# It deploys the CloudFormation stacks in order, using AWS credentials
+# and VPC details stored as GitHub Actions secrets — nothing is
+# hard-coded in the repo.
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project prefix (must match stack names)"
+        required: true
+        default: "rag-corpus"
+      max_vcpus:
+        description: "Max vCPUs for Batch Fargate Spot"
+        required: false
+        default: "64"
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  PROJECT: ${{ inputs.project }}
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Package Planner Lambda
+        run: |
+          cd src/planner && zip -r ../../planner.zip . && cd ../..
+          aws s3 cp planner.zip s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}/lambda/planner.zip \
+            || aws s3 mb s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} --region $AWS_REGION
+
+      - name: Deploy storage stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/cloudformation/storage.yaml \
+            --stack-name $PROJECT-storage \
+            --parameter-overrides Project=$PROJECT \
+            --capabilities CAPABILITY_NAMED_IAM
+
+      - name: Build and push worker image
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com
+          docker build -t $PROJECT-worker:$GITHUB_SHA .
+          docker tag $PROJECT-worker:$GITHUB_SHA ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-worker:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-worker:latest
+
+      - name: Deploy compute stack (VPC from secrets)
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/cloudformation/compute.yaml \
+            --stack-name $PROJECT-compute \
+            --parameter-overrides Project=$PROJECT \
+              VpcId=${{ secrets.VPC_ID }} \
+              SubnetIds=${{ secrets.SUBNET_IDS }} \
+              SecurityGroupIds=${{ secrets.SECURITY_GROUP_IDS }} \
+              MaxVcpus=${{ inputs.max_vcpus }} \
+            --capabilities CAPABILITY_NAMED_IAM
+
+      - name: Deploy orchestration stack
+        run: |
+          aws cloudformation deploy \
+            --template-file infra/cloudformation/orchestration.yaml \
+            --stack-name $PROJECT-orchestration \
+            --parameter-overrides Project=$PROJECT \
+              LambdaCodeBucket=$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} \
+              LambdaCodeKey=lambda/planner.zip \
+            --capabilities CAPABILITY_NAMED_IAM
