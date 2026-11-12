@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RAG corpus — orchestration stack: Planner Lambda + Step Functions state machine. Lambda code is uploaded to S3 by CI first."
+Parameters:
+  Project:
+    Type: String
+    Default: rag-corpus
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket holding planner.zip (uploaded by the provision workflow).
+  LambdaCodeKey:
+    Type: String
+    Default: lambda/planner.zip
+Resources:
+  PlannerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${Project}-planner"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [sqs:SendMessageBatch, sqs:SendMessage]
+                Resource: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${Project}-shards.fifo"
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: "*"
+  PlannerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${Project}-planner"
+      Role: !GetAtt PlannerRole.Arn
+      Handler: planner.handler
+      Runtime: python3.12
+      Timeout: 120
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          QUEUE_URL:
+            Fn::ImportValue: !Sub "${Project}-QueueUrl"
+          AWS_REGION: !Ref AWS::Region
+  SfnRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${Project}-sfn"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [lambda:InvokeFunction]
+                Resource: !GetAtt PlannerFunction.Arn
+              - Effect: Allow
+                Action: [batch:SubmitJob]
+                Resource: "*"
+  StateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "${Project}-run"
+      RoleArn: !GetAtt SfnRole.Arn
+      DefinitionString: !Sub
+        - |
+          {
+            "Comment": "RAG corpus run: plan shards into SQS, then run one Batch worker job (sync) that drains the queue.",
+            "StartAt": "PlanShards",
+            "States": {
+              "PlanShards": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "Parameters": {"FunctionName": "${PlannerArn}", "Payload.$": "$"},
+                "Retry": [{"ErrorEquals": ["States.ALL"], "IntervalSeconds": 5, "MaxAttempts": 3, "BackoffRate": 2.0}],
+                "Next": "SubmitBatchWorkers"
+              },
+              "SubmitBatchWorkers": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::batch:submitJob.sync",
+                "Parameters": {
+                  "JobDefinition": "${JobDefinitionArn}",
+                  "JobName": "rag-corpus-worker",
+                  "JobQueue": "${JobQueueArn}"
+                },
+                "Retry": [{"ErrorEquals": ["States.ALL"], "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 2.0}],
+                "End": true
+              }
+            }
+          }
+        - PlannerArn: !GetAtt PlannerFunction.Arn
+          JobDefinitionArn:
+            Fn::ImportValue: !Sub "${Project}-JobDefinitionArn"
+          JobQueueArn:
+            Fn::ImportValue: !Sub "${Project}-JobQueueArn"
+  DLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${Project}-dlq-depth"
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: 300
+      Statistic: Sum
+      Threshold: 0
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub "${Project}-shards-dlq.fifo"
+      AlarmDescription: "Shards are failing and landing in the DLQ."
+Outputs:
+  StateMachineArn:
+    Value: !Ref StateMachine
+    Export:
+      Name: !Sub "${Project}-StateMachineArn"
+  PlannerFunctionName:
+    Value: !Ref PlannerFunction
+    Export:
+      Name: !Sub "${Project}-PlannerFunctionName"
