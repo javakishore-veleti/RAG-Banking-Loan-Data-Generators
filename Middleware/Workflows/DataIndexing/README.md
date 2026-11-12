@@ -40,12 +40,19 @@ Actions (`AWS-Index-001` … `AWS-Index-010`).
 
 ## Embedding models
 
-Edit `config/embedding_models.yaml`: set `default_model`, or add a
-per-format override (`pdf: cohere.embed-english-v3`). `null` means
-"use the default". A workflow run can also pass `embedding_model`
-directly, which wins over the config. If you reference a model id the
-config doesn't know the dimensions of, the embedder probes Bedrock
-once and measures the vector length.
+When you run AWS-Index-003…008, the Run workflow dialog shows an
+**Embedding model** dropdown: `default`, `amazon.titan-embed-text-v2:0`,
+`amazon.titan-embed-text-v1:0`, `cohere.embed-english-v3`,
+`cohere.embed-multilingual-v3`. Pick one to override for that run
+only, or leave `default` — it resolves through
+`config/embedding_models.yaml` (per-format override, else
+`default_model`), so choosing a model never needs a file edit.
+
+To change what `default` means, edit `config/embedding_models.yaml`:
+set `default_model`, or add a per-format override
+(`pdf: cohere.embed-english-v3`). `null` means "use the default". If
+you reference a model id the config doesn't know the dimensions of,
+the embedder probes Bedrock once and measures the vector length.
 
 Bedrock model access must be enabled in the AWS console (one time)
 before the first run — the embedder fails over to the default model
