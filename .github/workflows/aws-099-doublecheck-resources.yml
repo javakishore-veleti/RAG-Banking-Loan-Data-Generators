@@ -1,0 +1,151 @@
+name: AWS-099 Double-Check Resources (manual — read-only)
+
+# Manual only, read-only. Run this AFTER a teardown (AWS-010 / AWS-Index-010)
+# to prove, with tick marks in this run's log, that every project resource
+# is actually gone. It deletes nothing — it only checks. If anything still
+# exists, the run fails red and names what is left.
+# What it checks: the 6 CloudFormation stacks, both S3 buckets, both ECR
+# repos, the RDS database, the Secrets Manager secret, the CloudTrail trail,
+# the 3 DynamoDB tables, the 4 SQS queues, the 2 Lambda functions, the 2
+# Step Functions machines, and any leftover Batch queues, compute
+# environments or job definitions carrying the project prefix.
+# Notes: the VPC and its NAT gateway are covered by the rag-corpus-vpc
+# stack check (they only exist as resources of that stack). CloudWatch
+# log groups are NOT checked — the services create them automatically,
+# they survive stack deletion, and they cost nothing while idle.
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project prefix"
+        required: true
+        default: "rag-corpus"
+      confirm:
+        description: "Type DOUBLE-CHECK to confirm"
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  PROJECT: ${{ inputs.project }}
+
+jobs:
+  double-check:
+    if: inputs.confirm == 'DOUBLE-CHECK'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Double-check all project resources are deleted
+        run: |
+          FAIL=0
+          ok() { echo "✅ $1 — $2"; }
+          bad() { echo "❌ $1 — $2"; FAIL=$((FAIL+1)); }
+
+          echo "== CloudFormation stacks (should not exist) =="
+          for STACK in $PROJECT-vpc $PROJECT-storage $PROJECT-compute $PROJECT-orchestration $PROJECT-indexing $PROJECT-index-orchestration; do
+            if aws cloudformation describe-stacks --stack-name "$STACK" >/dev/null 2>&1; then
+              STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK" --query 'Stacks[0].StackStatus' --output text)
+              bad "Stack $STACK" "still exists (status $STATUS)"
+            else
+              ok "Stack $STACK" "does not exist"
+            fi
+          done
+
+          echo "== S3 buckets (should not exist) =="
+          for BUCKET in $PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} $PROJECT-trail-${{ secrets.AWS_ACCOUNT_ID }}; do
+            if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+              bad "S3 bucket $BUCKET" "still exists"
+            else
+              ok "S3 bucket $BUCKET" "does not exist"
+            fi
+          done
+
+          echo "== ECR repositories (should not exist) =="
+          for REPO in $PROJECT-worker $PROJECT-indexer; do
+            if aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>&1; then
+              bad "ECR repo $REPO" "still exists"
+            else
+              ok "ECR repo $REPO" "does not exist"
+            fi
+          done
+
+          echo "== RDS database (should not exist) =="
+          if aws rds describe-db-instances --db-instance-identifier $PROJECT-index-db >/dev/null 2>&1; then
+            bad "RDS $PROJECT-index-db" "still exists"
+          else
+            ok "RDS $PROJECT-index-db" "does not exist"
+          fi
+
+          echo "== Secrets Manager secret (should not exist) =="
+          if aws secretsmanager describe-secret --secret-id $PROJECT-index-db >/dev/null 2>&1; then
+            bad "Secret $PROJECT-index-db" "still exists"
+          else
+            ok "Secret $PROJECT-index-db" "does not exist"
+          fi
+
+          echo "== CloudTrail trail (should not exist) =="
+          if aws cloudtrail get-trail --name $PROJECT-trail >/dev/null 2>&1; then
+            bad "Trail $PROJECT-trail" "still exists"
+          else
+            ok "Trail $PROJECT-trail" "does not exist"
+          fi
+
+          echo "== DynamoDB tables (should not exist) =="
+          for TABLE in $PROJECT-manifest $PROJECT-dedup $PROJECT-index-manifest; do
+            if aws dynamodb describe-table --table-name "$TABLE" >/dev/null 2>&1; then
+              bad "DynamoDB $TABLE" "still exists"
+            else
+              ok "DynamoDB $TABLE" "does not exist"
+            fi
+          done
+
+          echo "== SQS queues (should not exist) =="
+          for QUEUE in $PROJECT-shards.fifo $PROJECT-shards-dlq.fifo $PROJECT-index-shards.fifo $PROJECT-index-shards-dlq.fifo; do
+            if aws sqs get-queue-url --queue-name "$QUEUE" >/dev/null 2>&1; then
+              bad "SQS $QUEUE" "still exists"
+            else
+              ok "SQS $QUEUE" "does not exist"
+            fi
+          done
+
+          echo "== Lambda functions (should not exist) =="
+          for FN in $PROJECT-planner $PROJECT-index-planner; do
+            if aws lambda get-function --function-name "$FN" >/dev/null 2>&1; then
+              bad "Lambda $FN" "still exists"
+            else
+              ok "Lambda $FN" "does not exist"
+            fi
+          done
+
+          echo "== Step Functions machines (should not exist) =="
+          for SM in $PROJECT-run $PROJECT-index-run; do
+            ARN="arn:aws:states:$AWS_REGION:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:$SM"
+            if aws stepfunctions describe-state-machine --state-machine-arn "$ARN" >/dev/null 2>&1; then
+              bad "State machine $SM" "still exists"
+            else
+              ok "State machine $SM" "does not exist"
+            fi
+          done
+
+          echo "== Batch leftovers (should be none with the project prefix) =="
+          Q=$(aws batch describe-job-queues --query "jobQueues[?contains(jobQueueName, '$PROJECT')].jobQueueName" --output text)
+          if [ -z "$Q" ] || [ "$Q" = "None" ]; then ok "Batch job queues" "none left"; else bad "Batch job queues" "still exist: $Q"; fi
+          E=$(aws batch describe-compute-environments --query "computeEnvironments[?contains(computeEnvironmentName, '$PROJECT')].computeEnvironmentName" --output text)
+          if [ -z "$E" ] || [ "$E" = "None" ]; then ok "Batch compute environments" "none left"; else bad "Batch compute environments" "still exist: $E"; fi
+          J=$(aws batch describe-job-definitions --status ACTIVE --query "jobDefinitions[?contains(jobDefinitionName, '$PROJECT')].jobDefinitionName" --output text)
+          if [ -z "$J" ] || [ "$J" = "None" ]; then ok "Batch job definitions" "none left"; else bad "Batch job definitions" "still exist: $J"; fi
+
+          echo "========================================"
+          if [ "$FAIL" = "0" ]; then
+            echo "✅ ALL CLEAR — every project resource is deleted."
+          else
+            echo "❌ $FAIL check(s) still show resources — see the ❌ lines above."
+            exit 1
+          fi
