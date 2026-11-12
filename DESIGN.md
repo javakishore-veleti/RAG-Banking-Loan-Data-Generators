@@ -135,7 +135,7 @@ All names, branches, and IDs are fictional.
 
 ## 4. Generator design
 
-**File:** `src/generator/generator.py`. No external dependencies for
+**File:** `Middleware/Workflows/Datagen/src/generator/generator.py`. No external dependencies for
 PDF/DOCX/XLSX/CSV/TXT. Pillow is optional, for PNG text cards.
 
 ### 4.1 One record, six renderings
@@ -179,7 +179,7 @@ get a different corpus; keep the seed and you get the same corpus.
 3. Add one thin workflow `.github/workflows/generate-<fmt>.yml`
    (copy `generate-pdf.yml`, change the format name).
 4. Add the format to the README format table and to `DESIGN.md §3`.
-5. Add a test that the output parses (see `tests/test_generator.py`).
+5. Add a test that the output parses (see `Middleware/Workflows/Datagen/tests/test_generator.py`).
 
 Do not add per-format logic to the planner, worker, or Step Functions
 — they are format-agnostic by design.
@@ -211,7 +211,7 @@ If descriptions overlap too much, later RAG is useless:
 
 Metric: **wording-only Jaccard similarity on word 5-gram shingles,
 digits stripped.** Two descriptions that differ only in numbers
-score near 1.0. Tool: `uniqueness_check.py`.
+score near 1.0. Tool: `Middleware/Workflows/Datagen/uniqueness_check.py`.
 
 Measured (200 records, seed 7):
 
@@ -473,11 +473,11 @@ changes, the whole pipeline needs a PII review before use.
 
 | Layer | What is tested | How |
 |---|---|---|
-| Generator (unit) | EMI calculation, determinism per seed, record fields, answer mentions loan ID | `tests/test_generator.py` (pytest, or manual runner in README §11) |
+| Generator (unit) | EMI calculation, determinism per seed, record fields, answer mentions loan ID | `Middleware/Workflows/Datagen/tests/test_generator.py` (pytest, or manual runner in README §11) |
 | Generator (output) | DOCX/XLSX parse with `python-docx` / `openpyxl`; PDF starts with `%PDF-1.4`; PNG starts with PNG magic | Manual verification in the sample run; add to tests when adding a format |
-| Uniqueness | Wording-only Jaccard on a 200-record sample | `uniqueness_check.py --count 200 --seed 7` — run after any generator change |
+| Uniqueness | Wording-only Jaccard on a 200-record sample | `Middleware/Workflows/Datagen/uniqueness_check.py --count 200 --seed 7` — run after any generator change |
 | Workflows / CFN | YAML parses (with CFN tags handled); JSON parses | CFN-aware YAML loader in validation; `py_compile` for Python |
-| End-to-end (local) | 10 records, all formats, manifest written | `src/generator/generator.py --count 10 --out /tmp/corpus --year 2024` |
+| End-to-end (local) | 10 records, all formats, manifest written | `Middleware/Workflows/Datagen/src/generator/generator.py --count 10 --out /tmp/corpus --year 2024` |
 | End-to-end (AWS) | 1,000 records, one format, one year; S3 + DynamoDB counts match | Manual generate workflow, then count S3 prefix + DynamoDB by `run_id` |
 
 **What is not tested yet:** actual CloudFormation deployment
@@ -516,7 +516,7 @@ verification steps, not unit tests.
   purposes) and questions to `QUESTIONS`. Re-run uniqueness.
 - **New question topic:** add a topic to `QUESTIONS` and four
   paraphrase variants in `answer_for`. Re-run uniqueness.
-- **Policy corpus:** new generator module (`src/policy/`), new
+- **Policy corpus:** new generator module (`Middleware/Workflows/Datagen/src/policy/`), new
   S3 prefix `policy/<loan_type>/version=…/`, new DynamoDB table or
   the same manifest with `record_kind: policy`. Do not reuse the
   customer record generator for policies — the volume and versioning

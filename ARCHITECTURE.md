@@ -121,9 +121,9 @@ it is archived under `infra/archive-terraform/` and is **not** used.
 
 | Stack | Template | Resources |
 |---|---|---|
-| `<project>-storage` | `infra/cloudformation/storage.yaml` | S3 corpus bucket (versioning, AES-256, Intelligent-Tiering after 30d), DynamoDB manifest table, DynamoDB dedup table, SQS FIFO queue + DLQ |
-| `<project>-compute` | `infra/cloudformation/compute.yaml` | ECR repository, Batch service role, Batch task + execution roles, Batch Fargate Spot compute environment, job queue, job definition |
-| `<project>-orchestration` | `infra/cloudformation/orchestration.yaml` | Planner Lambda + role, Step Functions state machine + role, DLQ CloudWatch alarm |
+| `<project>-storage` | `Middleware/Workflows/Datagen/infra/cloudformation/storage.yaml` | S3 corpus bucket (versioning, AES-256, Intelligent-Tiering after 30d), DynamoDB manifest table, DynamoDB dedup table, SQS FIFO queue + DLQ |
+| `<project>-compute` | `Middleware/Workflows/Datagen/infra/cloudformation/compute.yaml` | ECR repository, Batch service role, Batch task + execution roles, Batch Fargate Spot compute environment, job queue, job definition |
+| `<project>-orchestration` | `Middleware/Workflows/Datagen/infra/cloudformation/orchestration.yaml` | Planner Lambda + role, Step Functions state machine + role, DLQ CloudWatch alarm |
 
 Stacks communicate via CloudFormation **exports/imports**
 (`Fn::ImportValue`): the compute stack imports the SQS queue URL
@@ -135,7 +135,7 @@ Parameters that come from GitHub Secrets (never hard-coded):
 
 ### 3.3 Step Functions
 
-State machine (`infra/stepfunctions/state-machine.json`, mirrored in
+State machine (`Middleware/Workflows/Datagen/infra/stepfunctions/state-machine.json`, mirrored in
 `orchestration.yaml`):
 
 ```
@@ -216,7 +216,7 @@ Two tables, both `PAY_PER_REQUEST` (no capacity provisioning):
 ### 3.9 ECR
 
 Repository `<project>-worker`, scan-on-push enabled. The provision
-workflow builds the worker image from `Dockerfile` and pushes
+workflow builds the worker image from `Middleware/Workflows/Datagen/Dockerfile` and pushes
 `:latest` (and the commit SHA tag in CI, if enabled). The Batch job
 definition references `:latest`.
 
@@ -336,7 +336,7 @@ Full schemas: `DESIGN.md §7`.
 | Step Functions | Task retry, exponential backoff | 3 attempts |
 | AWS Batch | Job retry strategy | 3 attempts |
 | SQS | Visibility timeout + redelivery | 3 receives, then DLQ |
-| DLQ | Manual replay via `scripts/enqueue_shards.py` | 14-day retention |
+| DLQ | Manual replay via `Middleware/Workflows/Datagen/scripts/enqueue_shards.py` | 14-day retention |
 
 **Idempotency guards:**
 
@@ -506,7 +506,7 @@ GitHub environment per account.
 1. **No deployment has happened yet.** Templates are validated
    (YAML/JSON/Python), not applied. The first `provision-infra` run
    is the real test.
-2. **Uniqueness check is pairwise** in `uniqueness_check.py` (O(n²)).
+2. **Uniqueness check is pairwise** in `Middleware/Workflows/Datagen/uniqueness_check.py` (O(n²)).
    It is fine at 200 records, not at 1M. At scale, use MinHash/LSH
    in the Batch worker — the dedup table is the hook for that.
 3. **PNG text rendering** uses Pillow's default bitmap font. It is

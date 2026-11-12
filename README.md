@@ -83,13 +83,13 @@ git clone <your-repo-url> rag-corpus
 cd rag-corpus
 
 # 2. Generate 10 records in all six formats
-python3 src/generator/generator.py --count 10 --out ./corpus --year 2024
+python3 Middleware/Workflows/Datagen/src/generator/generator.py --count 10 --out ./corpus --year 2024
 
 # 3. Look at one
 cat corpus/txt/loan_0000000_*.txt
 
 # 4. Measure description uniqueness on 200 records
-python3 uniqueness_check.py --count 200 --seed 7
+python3 Middleware/Workflows/Datagen/uniqueness_check.py --count 200 --seed 7
 ```
 
 Expected output for step 2:
@@ -103,7 +103,7 @@ Manifest: ./corpus/manifest.jsonl
 ### Generator CLI — full options
 
 ```
-python3 src/generator/generator.py \
+python3 Middleware/Workflows/Datagen/src/generator/generator.py \
   --count 1000 \            # records (documents) per format
   --out ./corpus \          # output directory
   --seed 7 \                # deterministic generation
@@ -125,52 +125,43 @@ Notes:
 
 ## 3. Repo layout
 
+This repo is organised as a platform, not a single app:
+
 ```
 .
-├── README.md                  # this file — start here
-├── ARCHITECTURE.md            # system architecture, AWS services, scaling, failure modes
-├── DESIGN.md                  # design decisions, data model, interfaces, invariants
-├── Dockerfile                 # Batch worker image (python:3.12-slim + boto3 + Pillow)
-├── requirements.txt           # boto3, Pillow
-├── .gitignore
-├── src/
-│   ├── generator/
-│   │   ├── __init__.py
-│   │   └── generator.py       # SHARED bottom layer — the generator (no AWS deps)
-│   ├── planner/
-│   │   ├── __init__.py
-│   │   └── planner.py         # SHARED — Lambda: split a run into SQS shards
-│   └── worker/
-│       ├── __init__.py
-│       └── batch_worker.py    # SHARED — Batch: poll SQS, generate a shard, upload to S3 + DynamoDB
-├── infra/
-│   ├── cloudformation/
-│   │   ├── storage.yaml       # S3, DynamoDB manifest + dedup, SQS FIFO + DLQ
-│   │   ├── compute.yaml       # ECR, Batch Fargate Spot, job queue + definition
-│   │   ├── orchestration.yaml # Planner Lambda, Step Functions, DLQ alarm
-│   │   └── parameters/
-│   │       └── prod.json.example
-│   ├── stepfunctions/
-│   │   └── state-machine.json # mirrored in orchestration.yaml
-│   └── archive-terraform/     # superseded Terraform version — reference only
-├── scripts/
-│   ├── run_local.sh           # local run, same code path as Batch (minus AWS)
-│   └── enqueue_shards.py      # replay DLQ messages back to the main queue
-├── tests/
-│   └── test_generator.py      # generator unit tests
-├── uniqueness_check.py        # measure description overlap (see §5)
-└── .github/
-    └── workflows/
-        ├── ci.yml                 # tests on push / PR
-        ├── provision-infra.yml    # MANUAL: deploy CloudFormation stacks
-        ├── generate.yml           # SHARED reusable workflow (called by the six below)
-        ├── generate-pdf.yml       # MANUAL: pdf only
-        ├── generate-docx.yml      # MANUAL: docx only
-        ├── generate-xlsx.yml      # MANUAL: xlsx only
-        ├── generate-csv.yml       # MANUAL: csv only
-        ├── generate-txt.yml       # MANUAL: txt only
-        └── generate-png.yml       # MANUAL: png only
+├── README.md, ARCHITECTURE.md, DESIGN.md, GITHUB_ISSUES.md   # docs — start here
+├── .github/workflows/      # GitHub Actions (must live at repo root)
+│   ├── ci.yml, create-issues.yml, close-issues.yml
+│   ├── provision-infra.yml, generate.yml, generate-<format>.yml
+│   └── destroy-infra.yml, delete-data.yml
+├── scripts/                # repo tooling (issue creation / closing)
+├── Middleware/             # server-side apps
+│   ├── Workflows/
+│   │   └── Datagen/        # THIS APP — synthetic loan-data generation (ETL)
+│   │       ├── Dockerfile, requirements.txt   # its own Batch worker image
+│   │       ├── src/
+│   │       │   ├── generator/generator.py     # SHARED bottom layer — generator
+│   │       │   ├── planner/planner.py         # SHARED — Lambda: SQS shards
+│   │       │   └── worker/batch_worker.py     # SHARED — Batch worker
+│   │       ├── infra/
+│   │       │   ├── cloudformation/            # storage / compute / orchestration
+│   │       │   ├── stepfunctions/             # state-machine.json
+│   │       │   └── archive-terraform/         # superseded — reference only
+│   │       ├── scripts/    # run_local.sh, enqueue_shards.py (DLQ replay)
+│   │       ├── tests/      # generator unit tests
+│   │       ├── deployments/  # how the Datagen image + stacks are deployed
+│   │       ├── uniqueness_check.py, uniqueness_report.md
+│   │       └── README.md
+│   └── API-Services/       # FUTURE — loan / RAG query APIs (not built yet)
+└── Portals/
+    └── Loan-Advisor/       # FUTURE — customer-facing Angular app (not built yet)
 ```
+
+Each app under `Middleware/` and `Portals/` gets **its own Docker
+image and its own deployments** — Datagen's image (`<project>-worker`)
+is built from `Middleware/Workflows/Datagen/Dockerfile` with that
+folder as the build context. A future API service gets its own
+Dockerfile the same way; it never shares Datagen's image.
 
 **Layering rule — read this before changing code:**
 
@@ -179,8 +170,8 @@ Notes:
   `year`, `shard_size`, `seed` through. Do not put logic here.
 - **Middle layer (shared orchestration):** `generate.yml`,
   Step Functions, Planner Lambda, SQS. Format-agnostic.
-- **Bottom layer (shared, reused):** `src/generator/generator.py`,
-  `src/worker/batch_worker.py`, the Batch job definition, S3, DynamoDB.
+- **Bottom layer (shared, reused):** `Middleware/Workflows/Datagen/src/generator/generator.py`,
+  `Middleware/Workflows/Datagen/src/worker/batch_worker.py`, the Batch job definition, S3, DynamoDB.
   This is where all real logic lives. Change it once, all six formats
   get the change.
 
@@ -275,7 +266,7 @@ in numbers score near 1.0.
 **Run the checker before scaling:**
 
 ```bash
-python3 uniqueness_check.py --count 200 --seed 7
+python3 Middleware/Workflows/Datagen/uniqueness_check.py --count 200 --seed 7
 ```
 
 The remaining overlap is mostly unavoidable domain vocabulary
@@ -294,16 +285,16 @@ Inputs: `project` (default `rag-corpus`), `max_vcpus` (default `64`).
 
 What it does, in order:
 
-1. Packages `src/planner/` as `planner.zip` and uploads it to S3.
-2. Deploys `infra/cloudformation/storage.yaml` as stack
+1. Packages `Middleware/Workflows/Datagen/src/planner/` as `planner.zip` and uploads it to S3.
+2. Deploys `Middleware/Workflows/Datagen/infra/cloudformation/storage.yaml` as stack
    `<project>-storage` — S3 bucket, DynamoDB manifest + dedup tables,
    SQS FIFO + DLQ.
 3. Builds the worker Docker image, pushes it to ECR.
-4. Deploys `infra/cloudformation/compute.yaml` as stack
+4. Deploys `Middleware/Workflows/Datagen/infra/cloudformation/compute.yaml` as stack
    `<project>-compute` — ECR, Batch Fargate Spot compute environment,
    job queue, job definition. VPC, subnets, and security groups come
    from GitHub secrets as CloudFormation parameters.
-5. Deploys `infra/cloudformation/orchestration.yaml` as stack
+5. Deploys `Middleware/Workflows/Datagen/infra/cloudformation/orchestration.yaml` as stack
    `<project>-orchestration` — Planner Lambda, Step Functions state
    machine, DLQ CloudWatch alarm.
 
@@ -370,7 +361,7 @@ Never hard-code these in the repo.
 | `SECURITY_GROUP_IDS` | `sg-0123456789abcdef0` | Provision (compute stack) |
 
 An example parameter file is at
-`infra/cloudformation/parameters/prod.json.example` — copy it, fill
+`Middleware/Workflows/Datagen/infra/cloudformation/parameters/prod.json.example` — copy it, fill
 in your values, and do **not** commit the filled-in copy.
 
 ---
@@ -405,7 +396,7 @@ S3 + DynamoDB  (corpus + ground-truth manifest)
 
 **Retry, in order:** Step Functions retry (backoff) → Batch retry
 (3 attempts) → SQS redelivery (3 receives) → DLQ. A failed shard is
-replayed from the DLQ with `scripts/enqueue_shards.py` — never re-run
+replayed from the DLQ with `Middleware/Workflows/Datagen/scripts/enqueue_shards.py` — never re-run
 the whole year.
 
 **Idempotency:** same seed + start + year always generates the same
@@ -443,11 +434,11 @@ dedup table — see `DESIGN.md §6` for the exact pattern.
 
 ```bash
 # Unit tests (generator)
-python3 -m pytest tests/ -q
+python3 -m pytest Middleware/Workflows/Datagen/tests/ -q
 # or, without pytest installed:
 python3 - << 'PY'
 import sys
-sys.path.insert(0, "tests"); sys.path.insert(0, "src")
+sys.path.insert(0, "Middleware/Workflows/Datagen/tests"); sys.path.insert(0, "Middleware/Workflows/Datagen/src")
 import test_generator
 for n in dir(test_generator):
     if n.startswith("test_"):
@@ -455,13 +446,13 @@ for n in dir(test_generator):
 PY
 
 # Syntax check
-python3 -m py_compile src/generator/generator.py src/planner/planner.py src/worker/batch_worker.py
+python3 -m py_compile Middleware/Workflows/Datagen/src/generator/generator.py Middleware/Workflows/Datagen/src/planner/planner.py Middleware/Workflows/Datagen/src/worker/batch_worker.py
 
 # Uniqueness check (see §5)
-python3 uniqueness_check.py --count 200 --seed 7
+python3 Middleware/Workflows/Datagen/uniqueness_check.py --count 200 --seed 7
 
 # Local generation smoke test
-python3 src/generator/generator.py --count 10 --out /tmp/corpus --year 2024
+python3 Middleware/Workflows/Datagen/src/generator/generator.py --count 10 --out /tmp/corpus --year 2024
 ```
 
 CI (`ci.yml`) runs the unit tests and py_compile on every push/PR.
@@ -477,10 +468,10 @@ locally by default — that is expected; they run in the Docker image
 |---|---|---|
 | `provision-infra` fails on the compute stack | VPC / subnet / SG secrets are wrong or empty | Check §8 secrets; subnets must have a NAT gateway or an S3 VPC endpoint |
 | Batch jobs stay `RUNNABLE` | Compute environment has no capacity, or subnets have no outbound route | Check Batch console → compute environment; check the VPC route |
-| Shards land in the DLQ | Worker exception, e.g. S3/DynamoDB permission | Read CloudWatch Logs `/aws/batch/job`; fix the cause, then replay the DLQ with `scripts/enqueue_shards.py` |
+| Shards land in the DLQ | Worker exception, e.g. S3/DynamoDB permission | Read CloudWatch Logs `/aws/batch/job`; fix the cause, then replay the DLQ with `Middleware/Workflows/Datagen/scripts/enqueue_shards.py` |
 | Same shard runs twice | That is expected on retry — check the `.done` marker; it should skip on replay | If it re-generates, the marker write failed — check S3 permissions |
 | Uniqueness check is slow | Pairwise Jaccard is O(n²) | Keep `--count` at 200 for the check; at 1M scale use MinHash/LSH in the worker, not pairwise comparison |
-| `terraform` files are missing | Intentional — Terraform is archived | Use CloudFormation under `infra/cloudformation/`; the old Terraform is in `infra/archive-terraform/` for reference only |
+| `terraform` files are missing | Intentional — Terraform is archived | Use CloudFormation under `Middleware/Workflows/Datagen/infra/cloudformation/`; the old Terraform is in `Middleware/Workflows/Datagen/infra/archive-terraform/` for reference only |
 
 ---
 

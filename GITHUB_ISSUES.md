@@ -17,10 +17,20 @@
 >    are done locally — the cloud pipeline amplifies whatever the
 >    local generator does, good or bad.
 >
-> **Labels to create:** `epic`, `feature`, `story`, plus
-> `generator`, `format-pdf`, `format-docx`, `format-xlsx`,
-> `format-csv`, `format-txt`, `format-png`, `aws`, `uniqueness`,
-> `dedup`, `infra`, `testing`, `docs`.
+> **Labels to create:** `epic`, `feature`, `story`, plus topical labels
+> per issue — `aws`, `s3`, `dynamodb`, `sqs`, `batch`, `lambda`,
+> `step-functions`, `cloudformation`, `ecr`, `cloudwatch`,
+> `cloudtrail`, `datagen-wf`, `github-actions`, `infra-setup`,
+> `infra-destroy`, `data-delete`, `generator`,
+> `format-pdf`, `format-docx`, `format-xlsx`, `format-csv`,
+> `format-txt`, `format-png`, `manifest`, `partitioning`,
+> `uniqueness`, `dedup`, `realism`, `testing`, `docs`,
+> `observability`. Every issue gets its type label *and* its topical
+> labels — e.g. F022 Storage stack is `feature, aws, cloudformation,
+> infra-setup, s3`; F032 Destroy infra is `feature, infra-destroy,
+> github-actions, cloudformation`; S080 (destroy workflow) is
+> `story, infra-destroy, github-actions, cloudformation`. The mapping
+> lives in `scripts/create_issues.py` (`EPIC_LABELS` / `FEATURE_LABELS`); stories inherit their feature's labels.
 
 ---
 
@@ -113,7 +123,7 @@
 ### E004 — Uniqueness & overlap control (M003)
 
 **F013 — Overlap measurement**
-- S027. Build `uniqueness_check.py`: wording-only 5-gram Jaccard, with/without numbers.
+- S027. Build `Middleware/Workflows/Datagen/uniqueness_check.py`: wording-only 5-gram Jaccard, with/without numbers.
 - S028. Report mean / median / p90 / max and % pairs > 0.5 / > 0.8, overall and same-type.
 - S029. Record the baseline (v1) numbers in `uniqueness_report.md`.
 
@@ -173,7 +183,7 @@
 **F024 — Orchestration stack**
 - S057. CloudFormation `orchestration.yaml`: Planner Lambda, Step Functions, DLQ alarm.
 - S058. Planner Lambda code is packaged and uploaded by the provision workflow.
-- S059. Step Functions definition is the single source of truth (mirrored in `infra/stepfunctions/`).
+- S059. Step Functions definition is the single source of truth (mirrored in `Middleware/Workflows/Datagen/infra/stepfunctions/`).
 
 **F031 — CloudTrail audit logging (infra provisioning, added)**
 - S077. Enable CloudTrail in the infra stack: every AWS API call is logged (who provisioned, who started a run, who deleted what).
@@ -195,7 +205,7 @@
 **F027 — Batch worker & retry**
 - S066. Batch worker polls SQS, generates a shard, uploads to S003 + DynamoDB.
 - S067. Three-layer retry: Step Functions → Batch (3×) → SQS (3× → DLQ).
-- S068. DLQ replay script (`scripts/enqueue_shards.py`) moves failed shards back to the main queue.
+- S068. DLQ replay script (`Middleware/Workflows/Datagen/scripts/enqueue_shards.py`) moves failed shards back to the main queue.
 
 ### E009 — Quality, observability & release (M005)
 
