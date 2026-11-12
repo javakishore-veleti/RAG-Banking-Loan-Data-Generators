@@ -1,0 +1,170 @@
+name: AWS-Index-001 Provision (manual)
+
+# Manual only. Run this once (and again when indexing infra changes)
+# from Actions -> AWS-Index-001 Provision -> Run workflow.
+# It provisions the indexing stacks: RDS PostgreSQL (pgvector),
+# SQS FIFO + DLQ, DynamoDB index manifest, ECR, Batch, Step Functions.
+#
+# AWS credentials come ONLY from GitHub Actions secrets (same 5 as
+# Datagen — no new secrets): AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
+# AWS_REGION, AWS_ACCOUNT_ID, PROJECT. Nothing is hard-coded.
+#
+# VPC — the indexing stacks run in the SAME VPC AWS-001 provisioned
+# (vpc_mode):
+#   reuse-existing (default): use the $PROJECT-vpc stack outputs if
+#     that stack exists; else VPC_ID / SUBNET_IDS /
+#     SECURITY_GROUP_IDS secrets (or the run inputs below).
+#   create-new: deploy Datagen's infra/cloudformation/vpc.yaml first
+#     (same template AWS-001 uses; NAT gateway ~$32/month while the
+#     stack exists; Datagen's AWS-010 deletes it).
+# Enable Bedrock model access in the AWS console (one time) before
+# the first index run — the embedder fails over to the default model
+# if a configured model is not enabled.
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project prefix (must match stack names)"
+        required: true
+        default: "rag-corpus"
+      max_vcpus:
+        description: "Max vCPUs for Batch Fargate Spot"
+        required: false
+        default: "64"
+      db_instance_class:
+        description: "RDS instance class for the pgvector database"
+        required: false
+        default: "db.t4g.micro"
+      multi_az:
+        description: "RDS Multi-AZ failover (true for production)"
+        required: false
+        type: choice
+        default: "false"
+        options: ["true", "false"]
+      opensearch_enabled:
+        description: "Create the OpenSearch Serverless BM25 index (IDX-4) too"
+        required: false
+        type: choice
+        default: "false"
+        options: ["true", "false"]
+      vpc_mode:
+        description: "VPC source: reuse-existing (AWS-001 VPC stack/secrets) or create-new"
+        required: true
+        type: choice
+        default: "reuse-existing"
+        options:
+          - reuse-existing
+          - create-new
+      vpc_id:
+        description: "Optional: existing VPC id (overrides VPC_ID secret)"
+        required: false
+        default: ""
+      subnet_ids:
+        description: "Optional: comma-separated subnet ids (overrides SUBNET_IDS secret)"
+        required: false
+        default: ""
+      security_group_ids:
+        description: "Optional: comma-separated security group ids (overrides SECURITY_GROUP_IDS secret)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  PROJECT: ${{ inputs.project }}
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Check AWS secrets are configured
+        run: |
+          MISSING=""
+          [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && MISSING="$MISSING AWS_ACCESS_KEY_ID"
+          [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ] && MISSING="$MISSING AWS_SECRET_ACCESS_KEY"
+          [ -z "${{ secrets.AWS_REGION }}" ] && MISSING="$MISSING AWS_REGION"
+          [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ] && MISSING="$MISSING AWS_ACCOUNT_ID"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing GitHub secrets:$MISSING — set them in repo Settings -> Secrets and variables -> Actions, then re-run AWS-Index-001."
+            exit 1
+          fi
+          echo "AWS secrets present (values not shown). VPC mode: ${{ inputs.vpc_mode }}"
+
+      - name: Resolve VPC (reuse AWS-001 VPC, secrets, or create new)
+        run: |
+          if [ "${{ inputs.vpc_mode }}" = "create-new" ]; then
+            echo "Creating new VPC stack $PROJECT-vpc ..."
+            aws cloudformation deploy \
+              --template-file Middleware/Workflows/Datagen/infra/cloudformation/vpc.yaml \
+              --stack-name $PROJECT-vpc \
+              --parameter-overrides Project=$PROJECT
+            VPC_ID=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' --output text)
+            SUBNET_IDS=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`SubnetIds`].OutputValue' --output text)
+            SECURITY_GROUP_IDS=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`SecurityGroupId`].OutputValue' --output text)
+          elif aws cloudformation describe-stacks --stack-name $PROJECT-vpc >/dev/null 2>&1; then
+            echo "Reusing $PROJECT-vpc stack from AWS-001 ..."
+            VPC_ID=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' --output text)
+            SUBNET_IDS=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`SubnetIds`].OutputValue' --output text)
+            SECURITY_GROUP_IDS=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`SecurityGroupId`].OutputValue' --output text)
+          else
+            # Run inputs win over secrets; blank input means "use the secret".
+            VPC_ID="${{ inputs.vpc_id || secrets.VPC_ID }}"
+            SUBNET_IDS="${{ inputs.subnet_ids || secrets.SUBNET_IDS }}"
+            SECURITY_GROUP_IDS="${{ inputs.security_group_ids || secrets.SECURITY_GROUP_IDS }}"
+          fi
+          if [ -z "$VPC_ID" ] || [ -z "$SUBNET_IDS" ] || [ -z "$SECURITY_GROUP_IDS" ]; then
+            echo "::error::VPC not resolved (mode=${{ inputs.vpc_mode }}). Run AWS-001 first (it creates the shared VPC), set the VPC_ID / SUBNET_IDS / SECURITY_GROUP_IDS secrets, pass vpc_id / subnet_ids / security_group_ids inputs, or re-run with vpc_mode=create-new."
+            exit 1
+          fi
+          echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
+          echo "SUBNET_IDS=$SUBNET_IDS" >> $GITHUB_ENV
+          echo "SECURITY_GROUP_IDS=$SECURITY_GROUP_IDS" >> $GITHUB_ENV
+          echo "VPC resolved: $VPC_ID (subnets/SG not shown)"
+
+      - name: Package Index Planner Lambda
+        run: |
+          cd Middleware/Workflows/DataIndexing/src && zip -r ../../../../index-planner.zip indexer && cd ../../../..
+          aws s3 cp index-planner.zip s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}/lambda/index-planner.zip \
+            || aws s3 mb s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} --region $AWS_REGION
+
+      - name: Deploy indexing stack (RDS pgvector, SQS, DynamoDB, Batch)
+        run: |
+          aws cloudformation deploy \
+            --template-file Middleware/Workflows/DataIndexing/infra/cloudformation/indexing.yaml \
+            --stack-name $PROJECT-indexing \
+            --parameter-overrides Project=$PROJECT \
+              VpcId=$VPC_ID \
+              SubnetIds=$SUBNET_IDS \
+              SecurityGroupIds=$SECURITY_GROUP_IDS \
+              MaxVcpus=${{ inputs.max_vcpus }} \
+              DBInstanceClass=${{ inputs.db_instance_class }} \
+              MultiAZ=${{ inputs.multi_az }} \
+              EnableOpenSearch=${{ inputs.opensearch_enabled }} \
+            --capabilities CAPABILITY_NAMED_IAM
+
+      - name: Build and push indexer image
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com
+          docker build -t $PROJECT-indexer:$GITHUB_SHA -f Middleware/Workflows/DataIndexing/Dockerfile Middleware/Workflows/DataIndexing
+          docker tag $PROJECT-indexer:$GITHUB_SHA ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-indexer:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-indexer:latest
+
+      - name: Deploy orchestration stack (planner + Step Functions)
+        run: |
+          aws cloudformation deploy \
+            --template-file Middleware/Workflows/DataIndexing/infra/cloudformation/orchestration.yaml \
+            --stack-name $PROJECT-index-orchestration \
+            --parameter-overrides Project=$PROJECT \
+              LambdaCodeBucket=$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} \
+              LambdaCodeKey=lambda/index-planner.zip \
+              CorpusBucket=$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} \
+            --capabilities CAPABILITY_NAMED_IAM
