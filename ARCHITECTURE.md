@@ -70,7 +70,7 @@
                           │
             ┌─────────────┼─────────────┐
             │             │             │
-   provision-infra   generate-<fmt>   ci
+   aws-001-provision-infra   generate-<fmt>   ci
    (manual)          (manual, ×6)    (push/PR)
             │             │
             ▼             ▼
@@ -105,13 +105,13 @@ scalable — see §11.
 
 - **Source of truth** for code, infra, and workflows.
 - **CI (`ci.yml`):** tests + py_compile on push/PR. No AWS access.
-- **Provision (`provision-infra.yml`):** manual `workflow_dispatch`.
+- **Provision (`aws-001-provision-infra.yml`):** manual `workflow_dispatch`.
   Deploys CloudFormation stacks in order. Uses AWS credentials and
   VPC details from GitHub Secrets (§8 in README).
 - **Generate (per format):** six manual `workflow_dispatch` workflows,
-  `generate-pdf.yml` … `generate-png.yml`. Thin wrappers — each only
+  `aws-003-generate-pdf.yml` … `aws-008-generate-png.yml`. Thin wrappers — each only
   names its format and passes `count`, `year`, `shard_size`, `seed`.
-- **Generate (shared):** `generate.yml`, a reusable `workflow_call`
+- **Generate (shared):** `aws-002-generate.yml`, a reusable `workflow_call`
   workflow. Starts the Step Functions execution for one format + year.
 
 ### 3.2 CloudFormation — infra as code
@@ -233,9 +233,9 @@ definition references `:latest`.
 
 Example: generate PDFs for 2024, 200,000 records.
 
-1. **Operator** runs Actions → Generate pdf, inputs
+1. **Operator** runs Actions → AWS-003 Generate PDF, inputs
    `count=200000, year=2024, shard_size=10000, seed=7`.
-2. **Reusable workflow** (`generate.yml`) starts Step Functions with
+2. **Reusable workflow** (`aws-002-generate.yml`) starts Step Functions with
    `run_id = "2024-pdf-<timestamp>"` and the input above.
 3. **Planner Lambda** computes 20 shards (`start=0,10000,…,190000`),
    sends 20 SQS messages.
@@ -479,7 +479,7 @@ with custom Python, which is why Batch was chosen here.
 ```
 GitHub (repo + Actions)
   │
-  │  provision-infra.yml (manual)
+  │  aws-001-provision-infra.yml (manual)
   ▼
 AWS account (region from secrets, e.g. ap-south-1)
   │
@@ -504,7 +504,7 @@ GitHub environment per account.
 ## 14. Limitations and known gaps
 
 1. **No deployment has happened yet.** Templates are validated
-   (YAML/JSON/Python), not applied. The first `provision-infra` run
+   (YAML/JSON/Python), not applied. The first `aws-001-provision-infra` run
    is the real test.
 2. **Uniqueness check is pairwise** in `Middleware/Workflows/Datagen/uniqueness_check.py` (O(n²)).
    It is fine at 200 records, not at 1M. At scale, use MinHash/LSH
@@ -517,4 +517,4 @@ GitHub environment per account.
    for how to switch.
 6. **No multi-format run in one workflow.** Each format is a
    separate manual run by design. A combined run would be a new
-   workflow that calls `generate.yml` six times.
+   workflow that calls `aws-002-generate.yml` six times.

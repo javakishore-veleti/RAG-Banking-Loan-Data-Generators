@@ -194,7 +194,7 @@
 
 **F025 — Per-format manual workflows**
 - S060. Six manual `workflow_dispatch` workflows, one per format, thin wrappers only.
-- S061. One shared reusable workflow (`generate.yml`) that all six call.
+- S061. One shared reusable workflow (`aws-002-generate.yml`) that all six call.
 - S062. Each workflow takes `count`, `year`, `shard_size`, `seed` as inputs.
 
 **F026 — Planner & SQS**
@@ -224,12 +224,12 @@
 - S076. Cost measurement: time + vCPU-hours + S003 size for one 10k shard, recorded before scaling.
 
 **F032 — Destroy infra / teardown (GitHub Actions, end of life)**
-- S080. Add a manual `destroy-infra.yml` GitHub Actions workflow (workflow_dispatch, with a typed confirmation input — never auto-run, never on push).
+- S080. Add a manual `aws-010-destroy-infra.yml` GitHub Actions workflow (workflow_dispatch, with a typed confirmation input — never auto-run, never on push).
 - S081. Teardown deletes the CloudFormation stacks in reverse order: orchestration → compute → storage, and deletes ECR images first so the compute stack can delete.
 - S082. Verify after teardown: no stacks, no ECR repo, no Batch resources, no Lambda / Step Functions left; record the check in the run log.
 
 **F033 — Delete the data (GitHub Actions, end of life)**
-- S083. Add a manual `delete-data.yml` GitHub Actions workflow (workflow_dispatch, with a typed confirmation input) that empties the S003 corpus bucket first — CloudFormation cannot delete a non-empty bucket.
+- S083. Add a manual `aws-009-delete-data.yml` GitHub Actions workflow (workflow_dispatch, with a typed confirmation input) that empties the S003 corpus bucket first — CloudFormation cannot delete a non-empty bucket.
 - S084. Delete the DynamoDB manifest + dedup tables, SQS queues, and CloudTrail log bucket contents as part of the same cleanup, in the right order.
 - S085. Verify after deletion: S003 bucket empty / deleted, tables gone, no charges continue; CloudWatch + CloudTrail are the last things removed, so the deletion itself is audited.
 

@@ -132,8 +132,8 @@ This repo is organised as a platform, not a single app:
 ├── README.md, ARCHITECTURE.md, DESIGN.md, GITHUB_ISSUES.md   # docs — start here
 ├── .github/workflows/      # GitHub Actions (must live at repo root)
 │   ├── ci.yml, create-issues.yml, close-issues.yml
-│   ├── provision-infra.yml, generate.yml, generate-<format>.yml
-│   └── destroy-infra.yml, delete-data.yml
+│   ├── aws-001-provision-infra.yml, aws-002-generate.yml, aws-003…aws-008-generate-<format>.yml
+│   └── aws-010-destroy-infra.yml, aws-009-delete-data.yml
 ├── scripts/                # repo tooling (issue creation / closing)
 ├── Middleware/             # server-side apps
 │   ├── Workflows/
@@ -165,10 +165,10 @@ Dockerfile the same way; it never shares Datagen's image.
 
 **Layering rule — read this before changing code:**
 
-- **Top layer (thin, per format):** the six `generate-<format>.yml`
+- **Top layer (thin, per format):** the six `aws-003…aws-008-generate-<format>.yml`
   workflows. Each one only names its format and passes `count`,
   `year`, `shard_size`, `seed` through. Do not put logic here.
-- **Middle layer (shared orchestration):** `generate.yml`,
+- **Middle layer (shared orchestration):** `aws-002-generate.yml`,
   Step Functions, Planner Lambda, SQS. Format-agnostic.
 - **Bottom layer (shared, reused):** `Middleware/Workflows/Datagen/src/generator/generator.py`,
   `Middleware/Workflows/Datagen/src/worker/batch_worker.py`, the Batch job definition, S3, DynamoDB.
@@ -279,9 +279,11 @@ or desirable — in a single domain.
 
 **Prerequisite:** set the GitHub Actions secrets in §8 first.
 
-In GitHub: **Actions → Provision Infra → Run workflow.**
+In GitHub: **Actions → AWS-001 Provision Infra → Run workflow.**
 
-Inputs: `project` (default `rag-corpus`), `max_vcpus` (default `64`).
+Inputs: `project` (default `rag-corpus`), `max_vcpus` (default `64`),
+`vpc_mode` (`use-existing` or `create-new`, default `use-existing`) —
+see §8 for the VPC choice.
 
 What it does, in order:
 
@@ -312,7 +314,7 @@ but keep the workflow as the source of truth.
 
 **Prerequisite:** infra provisioned (§6).
 
-In GitHub: **Actions → Generate pdf → Run workflow** (or docx, xlsx,
+In GitHub: **Actions → AWS-003 Generate PDF → Run workflow** (or docx, xlsx,
 csv, txt, png).
 
 Inputs:
@@ -363,6 +365,28 @@ Never hard-code these in the repo.
 An example parameter file is at
 `Middleware/Workflows/Datagen/infra/cloudformation/parameters/prod.json.example` — copy it, fill
 in your values, and do **not** commit the filled-in copy.
+
+### VPC: use an existing one, or let AWS-001 create one
+
+When you run **AWS-001 Provision Infra** you pick `vpc_mode`:
+
+- **`use-existing` (default):** the compute stack uses `VPC_ID` /
+  `SUBNET_IDS` / `SECURITY_GROUP_IDS` from the secrets above — or
+  the `vpc_id` / `subnet_ids` / `security_group_ids` run inputs,
+  which win over the secrets. If none are set, the run fails and
+  tells you which secret or input is missing.
+- **`create-new`:** AWS-001 first deploys
+  `infra/cloudformation/vpc.yaml` (`$PROJECT-vpc` stack: a VPC,
+  two private subnets for Batch, a NAT gateway, a security group)
+  and uses its outputs — no VPC secrets needed. The NAT gateway
+  costs ~$32/month + data while the stack exists; **AWS-010
+  Destroy Infra** deletes it. Use this when you have no VPC yet
+  and just want the pipeline up.
+
+AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_REGION`, `AWS_ACCOUNT_ID`) always come from the secrets
+above — configure them later, before the first AWS-001 run. Until
+then the run fails at the first step naming the missing secret.
 
 ---
 
@@ -466,7 +490,7 @@ locally by default — that is expected; they run in the Docker image
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `provision-infra` fails on the compute stack | VPC / subnet / SG secrets are wrong or empty | Check §8 secrets; subnets must have a NAT gateway or an S3 VPC endpoint |
+| `aws-001-provision-infra` fails on the compute stack | VPC / subnet / SG secrets are wrong or empty | Check §8 secrets; subnets must have a NAT gateway or an S3 VPC endpoint |
 | Batch jobs stay `RUNNABLE` | Compute environment has no capacity, or subnets have no outbound route | Check Batch console → compute environment; check the VPC route |
 | Shards land in the DLQ | Worker exception, e.g. S3/DynamoDB permission | Read CloudWatch Logs `/aws/batch/job`; fix the cause, then replay the DLQ with `Middleware/Workflows/Datagen/scripts/enqueue_shards.py` |
 | Same shard runs twice | That is expected on retry — check the `.done` marker; it should skip on replay | If it re-generates, the marker write failed — check S3 permissions |

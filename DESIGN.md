@@ -177,7 +177,7 @@ get a different corpus; keep the seed and you get the same corpus.
 1. Add a `write_<fmt>(path, rec)` function in `generator.py`.
 2. Add it to the `WRITERS` dict.
 3. Add one thin workflow `.github/workflows/generate-<fmt>.yml`
-   (copy `generate-pdf.yml`, change the format name).
+   (copy `aws-003-generate-pdf.yml`, change the format name).
 4. Add the format to the README format table and to `DESIGN.md §3`.
 5. Add a test that the output parses (see `Middleware/Workflows/Datagen/tests/test_generator.py`).
 
@@ -427,14 +427,14 @@ fully duplicated workflows.
   one format + one year at a time, checked before the next. A
   matrix run that starts all six formats at once would hide a
   failure in one format behind five successes.
-- **Shared reusable workflow** (`generate.yml`, `workflow_call`)
+- **Shared reusable workflow** (`aws-002-generate.yml`, `workflow_call`)
   means the trigger logic, AWS auth, and Step Functions call exist
   once. A bug fix there fixes all six formats.
-- **Thin wrappers** (`generate-pdf.yml`, …) contain only the format
+- **Thin wrappers** (`aws-003-generate-pdf.yml`, …) contain only the format
   name and the dispatch inputs. If a wrapper grows logic, move that
-  logic down to `generate.yml` or to the planner/worker.
+  logic down to `aws-002-generate.yml` or to the planner/worker.
 
-**Provisioning is separate and manual** (`provision-infra.yml`):
+**Provisioning is separate and manual** (`aws-001-provision-infra.yml`):
 infra changes are rarer and riskier than data runs, and they should
 not happen as a side effect of generating data.
 
@@ -526,7 +526,7 @@ verification steps, not unit tests.
   claim via the hash. Keep the exact-hash claim as a fallback.
 - **OIDC instead of keys:** see §10.
 - **Combined multi-format run:** a new workflow that calls
-  `generate.yml` six times (once per format). Do not add a matrix
+  `aws-002-generate.yml` six times (once per format). Do not add a matrix
   to the existing per-format workflows.
 
 ---
