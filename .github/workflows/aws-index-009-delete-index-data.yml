@@ -43,7 +43,7 @@ jobs:
       - name: Truncate index tables (one-off Batch job, inside the VPC)
         run: |
           JOB_DEF=$(aws batch describe-job-definitions --job-definition-name $PROJECT-indexer --status ACTIVE --query 'jobDefinitions[0].jobDefinitionArn' --output text)
-          JOB_QUEUE=$(aws batch describe-job-queues --job-queue-name $PROJECT-index-queue --query 'jobQueues[0].jobQueueArn' --output text)
+          JOB_QUEUE=$(aws batch describe-job-queues --job-queues $PROJECT-index-queue --query 'jobQueues[0].jobQueueArn' --output text)
           JOB_ID=$(aws batch submit-job --job-name $PROJECT-truncate-index --job-queue "$JOB_QUEUE" --job-definition "$JOB_DEF" \
             --container-overrides "environment=[{name=INDEX_MODE,value=truncate}]" \
             --query 'jobId' --output text)
