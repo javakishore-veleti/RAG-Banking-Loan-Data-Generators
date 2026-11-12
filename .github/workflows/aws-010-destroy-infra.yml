@@ -1,0 +1,61 @@
+name: AWS-010 Destroy Infra (manual — DANGER)
+
+# Manual only, end of life. Run this to tear down everything the
+# provision workflow created. It is deliberately hard to run by
+# accident: workflow_dispatch + a typed confirmation input.
+# Order is reverse of provision: orchestration -> compute -> storage
+# -> vpc (the $PROJECT-vpc stack only exists if AWS-001 ran with
+# vpc_mode=create-new; the delete step skips it when absent).
+# Data must be deleted first (see aws-009-delete-data.yml) — CloudFormation
+# cannot delete a non-empty S3 bucket.
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project prefix"
+        required: true
+        default: "rag-corpus"
+      confirm:
+        description: "Type DESTROY to confirm"
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  PROJECT: ${{ inputs.project }}
+
+jobs:
+  destroy:
+    if: inputs.confirm == 'DESTROY'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Delete orchestration stack
+        run: aws cloudformation delete-stack --stack-name $PROJECT-orchestration
+      - name: Delete compute stack
+        run: |
+          aws cloudformation wait stack-delete-complete --stack-name $PROJECT-orchestration
+          aws ecr delete-repository --repository-name $PROJECT-worker --force || true
+          aws cloudformation delete-stack --stack-name $PROJECT-compute
+      - name: Delete storage stack
+        run: |
+          aws cloudformation wait stack-delete-complete --stack-name $PROJECT-compute
+          aws cloudformation delete-stack --stack-name $PROJECT-storage
+          aws cloudformation wait stack-delete-complete --stack-name $PROJECT-storage
+          echo "Teardown complete. Verify in the console: no stacks, no ECR repo, no Batch/Lambda/Step Functions left."
+      - name: Delete VPC stack (only if AWS-001 created one)
+        run: |
+          if aws cloudformation describe-stacks --stack-name $PROJECT-vpc >/dev/null 2>&1; then
+            aws cloudformation delete-stack --stack-name $PROJECT-vpc
+            aws cloudformation wait stack-delete-complete --stack-name $PROJECT-vpc
+            echo "Deleted $PROJECT-vpc stack (NAT gateway gone — no more NAT charges)."
+          else
+            echo "No $PROJECT-vpc stack — VPC was supplied from secrets/inputs, nothing to delete."
+          fi
