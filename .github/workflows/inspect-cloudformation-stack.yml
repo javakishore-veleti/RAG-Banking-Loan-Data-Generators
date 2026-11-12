@@ -8,7 +8,11 @@ name: Inspect CloudFormation Stack (reusable + manual)
 # Two ways to use it:
 #   1. Manually: Actions -> Inspect CloudFormation Stack -> Run workflow,
 #      pick the stack name from the dropdown.
-#   2. Reusable: another workflow calls it with `uses:
+#   2. Batch logs: pass log_stream (a CloudWatch log stream name, e.g.
+#      rag-corpus-indexer/default/<task-id>) to dump that container's
+#      log events — the step that names the real error when a Step
+#      Functions execution fails at SubmitBatchWorkers.
+#   3. Reusable: another workflow calls it with `uses:
 #      ./.github/workflows/inspect-cloudformation-stack.yml` and passes
 #      `stack_name` plus the three AWS secrets below.
 #
@@ -22,6 +26,11 @@ on:
       stack_name:
         description: "CloudFormation stack to inspect"
         required: true
+        type: string
+      log_stream:
+        description: "CloudWatch log stream to dump, e.g. rag-corpus-indexer/default/<task-id>; blank = skip"
+        required: false
+        default: ""
         type: string
     secrets:
       AWS_ACCESS_KEY_ID:
@@ -44,6 +53,11 @@ on:
           - rag-corpus-orchestration
           - rag-corpus-indexing
           - rag-corpus-index-orchestration
+      log_stream:
+        description: "CloudWatch log stream to dump, e.g. rag-corpus-indexer/default/<task-id>; blank = skip"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -101,3 +115,18 @@ jobs:
           check "SQS queue $PROJECT-shards.fifo" aws sqs get-queue-url --queue-name "$PROJECT-shards.fifo"
           check "SQS queue $PROJECT-shards-dlq.fifo" aws sqs get-queue-url --queue-name "$PROJECT-shards-dlq.fifo"
           if aws cloudtrail describe-trails --query "trailList[?Name=='$PROJECT-trail']" --output text | grep -q "$PROJECT-trail"; then echo "EXISTS: CloudTrail $PROJECT-trail"; else echo "missing: CloudTrail $PROJECT-trail"; fi
+
+      - name: Fetch Batch CloudWatch logs (if a log stream was given)
+        # Dumps the CloudWatch log events for one Batch job log stream —
+        # the step that names the real error when a Step Functions
+        # execution fails at SubmitBatchWorkers (the execution history
+        # only says the container exited). Batch's default log group
+        # is /aws/batch/job. Read-only.
+        if: ${{ inputs.log_stream != '' }}
+        run: |
+          STREAM="${{ inputs.log_stream }}"
+          GROUP="/aws/batch/job"
+          echo "== CloudWatch log stream: $GROUP / $STREAM =="
+          aws logs describe-log-streams --log-group-name "$GROUP" --log-stream-name-prefix "$STREAM" --query 'logStreams[].{Stream:logStreamName,LastEvent:lastEventTimestamp}' --output table || echo "describe-log-streams: log group $GROUP not found or not readable."
+          echo "== Log events (oldest first, up to 200) =="
+          aws logs get-log-events --log-group-name "$GROUP" --log-stream-name "$STREAM" --limit 200 --start-from-head --query 'events[].message' --output text || echo "get-log-events failed for $STREAM - check the log group/stream names."
