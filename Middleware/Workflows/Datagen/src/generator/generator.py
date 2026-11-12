@@ -52,6 +52,147 @@ import zlib
 from datetime import date, timedelta
 from pathlib import Path
 
+# ---------------------------------------------------------------- seeds (F016)
+# Real-artifact terminology lives in data/seeds/terminology.yaml and is
+# loaded at runtime when present. The generator keeps working standalone
+# without it: load_terminology() returns {} and make_record() falls back
+# to the built-in LOAN_TYPES ranges, purposes and tenures.
+# The worker image has no PyYAML, so a minimal built-in parser for this
+# file's shape is used when `import yaml` fails.
+SEED_TERMINOLOGY_ENV = "SEED_TERMINOLOGY_PATH"
+
+
+def _seed_terminology_candidates():
+    here = Path(__file__).resolve()
+    cands = []
+    env = os.environ.get(SEED_TERMINOLOGY_ENV)
+    if env:
+        cands.append(Path(env))
+    # Datagen layout: src/generator/generator.py -> data/seeds/terminology.yaml
+    cands.append(here.parents[2] / "data" / "seeds" / "terminology.yaml")
+    # Worker image layout: /app/src/generator/generator.py -> /app/data/seeds/...
+    cands.append(Path("/app/data/seeds/terminology.yaml"))
+    return cands
+
+
+def _yaml_scalar(value):
+    """One plain YAML scalar: quoted string, int, float, bool, or string."""
+    v = value.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+        return v[1:-1]
+    if v in ("true", "True"):
+        return True
+    if v in ("false", "False"):
+        return False
+    try:
+        return int(v)
+    except ValueError:
+        pass
+    try:
+        return float(v)
+    except ValueError:
+        pass
+    return v
+
+
+def _load_yaml_subset(text):
+    """Minimal YAML-subset parser, just for terminology.yaml's shape.
+
+    Supports nested mappings by 2-space indent, scalar values, lists of
+    scalars, and lists of mappings written as '- key: value' with the
+    remaining keys at the same indent. Anything else raises ValueError.
+    """
+    root = {}
+    stack = [(-1, root)]  # (indent, container)
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        i += 1
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        content = raw.strip()
+        while stack and indent <= stack[-1][0]:
+            stack.pop()
+        if not stack:
+            raise ValueError("bad indentation in terminology.yaml")
+        parent = stack[-1][1]
+        if content.startswith("- "):
+            if not isinstance(parent, list):
+                raise ValueError("list item without a list in terminology.yaml")
+            item_text = content[2:].strip()
+            if ":" in item_text:
+                key, _, val = item_text.partition(":")
+                item = {key.strip(): _yaml_scalar(val.strip())}
+                parent.append(item)
+                # continuation keys sit at indent + 2; keep the item open
+                # for any line indented deeper than the dash itself.
+                stack.append((indent, item))
+            else:
+                parent.append(_yaml_scalar(item_text))
+            continue
+        if not isinstance(parent, dict):
+            raise ValueError("mapping entry inside a list in terminology.yaml")
+        key, _, val = content.partition(":")
+        key, val = key.strip(), val.strip()
+        if not key:
+            raise ValueError("empty key in terminology.yaml")
+        if val == "":
+            # peek at the next real line to decide list vs mapping
+            j = i
+            while j < len(lines) and (not lines[j].strip()
+                                      or lines[j].lstrip().startswith("#")):
+                j += 1
+            if j < len(lines) and lines[j].strip().startswith("- "):
+                child = []
+            else:
+                child = {}
+            parent[key] = child
+            stack.append((indent, child))
+        else:
+            parent[key] = _yaml_scalar(val)
+    return root
+
+
+def load_terminology(path=None):
+    """Load data/seeds/terminology.yaml; {} if missing or unreadable."""
+    paths = [Path(path)] if path else _seed_terminology_candidates()
+    for p in paths:
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        try:
+            import yaml
+            data = yaml.safe_load(text)
+        except ImportError:
+            try:
+                data = _load_yaml_subset(text)
+            except ValueError:
+                return {}
+        except Exception:
+            return {}
+        if not isinstance(data, dict) or not isinstance(data.get("loan_types"), dict):
+            return {}
+        return data
+    return {}
+
+
+TERMINOLOGY = load_terminology()
+
+
+def _seed_texts(entries):
+    """Pull the plain `text` out of a terminology list (dicts or strings)."""
+    out = []
+    for e in entries or []:
+        if isinstance(e, dict):
+            out.append(str(e.get("text", "")))
+        else:
+            out.append(str(e))
+    return [t for t in out if t]
+
+
 # ---------------------------------------------------------------- content
 
 FIRST_NAMES = [
@@ -139,6 +280,21 @@ def emi(principal, annual_rate, months):
 def make_record(rng, i, year=None):
     key = rng.choice(list(LOAN_TYPES))
     label, lo, hi, rlo, rhi, tenures, purposes = LOAN_TYPES[key]
+    # F016: prefer the seeded ranges / purposes / tenures from real
+    # artifacts (terminology.yaml) when loaded; built-ins are the fallback.
+    seed = (TERMINOLOGY.get("loan_types", {}).get(key, {})
+            if TERMINOLOGY else {})
+    if seed:
+        try:
+            rlo = float(seed.get("rate_min", rlo))
+            rhi = float(seed.get("rate_max", rhi))
+        except (TypeError, ValueError):
+            pass
+        seeded_purposes = _seed_texts(seed.get("purposes"))
+        if seeded_purposes:
+            purposes = seeded_purposes
+        if seed.get("tenures"):
+            tenures = list(seed["tenures"])
     # clustered amounts: log-uniform feels more realistic than uniform
     amount = int(math.exp(rng.uniform(math.log(lo), math.log(hi))) // 1000 * 1000)
     rate = round(rng.uniform(rlo, rhi), 2)
@@ -154,6 +310,27 @@ def make_record(rng, i, year=None):
         start = date(int(year), 1, 1) + timedelta(days=rng.randint(0, 364))
     else:
         start = date(2023, 1, 1) + timedelta(days=rng.randint(0, 900))
+    # F016: per-record seed picks (rng-driven, so determinism holds).
+    # Distinct picks from each pool keep records from sharing wording.
+    seed_terms = []
+    seed_docs = []
+    seed_fee = ""
+    rate_basis = ""
+    prepayment = ""
+    amount_note = ""
+    if seed:
+        terms_pool = _seed_texts(seed.get("terms"))
+        docs_pool = _seed_texts(seed.get("documents"))
+        if terms_pool:
+            seed_terms = rng.sample(terms_pool, min(3, len(terms_pool)))
+        if docs_pool:
+            seed_docs = rng.sample(docs_pool, min(4, len(docs_pool)))
+        fees_pool = _seed_texts(seed.get("fees"))
+        if fees_pool:
+            seed_fee = rng.choice(fees_pool)
+        rate_basis = str(seed.get("rate_basis", "") or "")
+        prepayment = str(seed.get("prepayment", "") or "")
+        amount_note = str(seed.get("amount_note", "") or "")
     return {
         "i": i, "loan_id": loan_id, "name": name, "type_key": key,
         "loan_type": label, "amount": amount, "rate": rate, "tenure": tenure,
@@ -163,10 +340,17 @@ def make_record(rng, i, year=None):
         "start_date": start.isoformat(),
         "question": q, "topic": topic,
         "credit_score": rng.randint(650, 850),
+        # F016: longest tenure offered for this product, from the seeded
+        # tenures when loaded (so the tenure answer matches the draw).
+        "max_tenure": max(tenures),
         # Uniqueness: variant picks a paraphrase template + layout, so two
         # records with the same loan type do not share the same wording.
         "variant": rng.randint(0, 3),
         "layout": rng.randint(0, 2),
+        # F016 seed fields (empty when terminology.yaml is not loaded).
+        "seed_terms": seed_terms, "seed_documents": seed_docs,
+        "seed_fee": seed_fee, "rate_basis": rate_basis,
+        "seed_prepayment": prepayment, "seed_amount_note": amount_note,
     }
 
 
@@ -178,11 +362,15 @@ def answer_for(rec):
     lt, amt, rate, ten, emi_v, lid = (rec["loan_type"], rec["amount"], rec["rate"],
                                       rec["tenure"], rec["emi"], rec["loan_id"])
     if t == "interest rate":
+        # F016: rate basis comes from the seeds (e.g. "linked to the repo
+        # rate", "linked to the 1-year MCLR") when terminology is loaded.
+        basis = rec.get("rate_basis") or ""
+        basis_txt = f" The rate is {basis}." if basis else ""
         return [
             f"The interest rate for a {lt} is {rate}% per annum. For loan {lid}, the sanctioned rate is {rate}% on Rs. {amt:,} over {ten} months.",
-            f"Loan {lid} carries {rate}% a year. That is the rate applied to the {lt} of Rs. {amt:,}, repayable over {ten} months.",
+            f"Loan {lid} carries {rate}% a year.{basis_txt} That is the rate applied to the {lt} of Rs. {amt:,}, repayable over {ten} months.",
             f"For this {lt}, the bank charges {rate}% per annum. The sanctioned amount is Rs. {amt:,}, and the term is {ten} months.",
-            f"At {rate}% per annum, this {lt} (loan {lid}) costs that rate on Rs. {amt:,} across a {ten}-month term.",
+            f"At {rate}% per annum, this {lt} (loan {lid}) costs that rate on Rs. {amt:,} across a {ten}-month term.{basis_txt}",
         ][v % 4]
     if t == "emi":
         return [
@@ -192,13 +380,31 @@ def answer_for(rec):
             f"Repayment is Rs. {emi_v:,} a month. The calculation uses a principal of Rs. {amt:,}, a rate of {rate}%, and a {ten}-month tenure.",
         ][v % 4]
     if t == "tenure":
+        # F016: max tenure comes from the record (seeded tenures when
+        # loaded), not the built-in LOAN_TYPES list.
+        max_ten = rec.get("max_tenure") or max(LOAN_TYPES[rec['type_key']][5])
         return [
-            f"The tenure for this {lt} is {ten} months. Available tenures for {lt} range up to {max(LOAN_TYPES[rec['type_key']][5])} months.",
-            f"This {lt} runs for {ten} months. The longest tenure offered for this product is {max(LOAN_TYPES[rec['type_key']][5])} months.",
-            f"Loan {lid} is scheduled over {ten} months. Other tenures are available, up to {max(LOAN_TYPES[rec['type_key']][5])} months for a {lt}.",
+            f"The tenure for this {lt} is {ten} months. Available tenures for {lt} range up to {max_ten} months.",
+            f"This {lt} runs for {ten} months. The longest tenure offered for this product is {max_ten} months.",
+            f"Loan {lid} is scheduled over {ten} months. Other tenures are available, up to {max_ten} months for a {lt}.",
             f"The agreed term is {ten} months — that is how long this {lt} takes to repay.",
         ][v % 4]
     if t == "documents":
+        # F016: the document list is the rng-picked subset of the real
+        # checklist for this loan type (seed_documents); each record
+        # lists different documents, which also helps uniqueness.
+        docs = rec.get("seed_documents") or []
+        if docs:
+            if len(docs) > 1:
+                doc_list = ", ".join(docs[:-1]) + " and " + docs[-1]
+            else:
+                doc_list = docs[0]
+            return [
+                f"For a {lt}, please submit {doc_list}. Loan {lid} was processed at {rec['branch']} branch.",
+                f"Loan {lid} needed {doc_list}. It was processed at {rec['branch']}.",
+                f"To apply for this {lt}, the bank asks for {doc_list}. Processing for loan {lid} happened at {rec['branch']} branch.",
+                f"The document set for loan {lid} is: {doc_list}.",
+            ][v % 4]
         return [
             f"For a {lt}, please submit identity proof, address proof, income proof, bank statements for the last 6 months, and the completed application form. Loan {lid} was processed at {rec['branch']} branch.",
             f"Loan {lid} needed identity and address proof, proof of income, six months of bank statements, and a signed application form. It was processed at {rec['branch']}.",
@@ -213,23 +419,31 @@ def answer_for(rec):
             f"For a {lt}, the bank looks for a credit score of at least 650. Here the score is {rec['credit_score']}.",
         ][v % 4]
     if t == "prepayment":
+        # F016: the sourced prepayment term for this loan type, when the
+        # seeds carry one (e.g. "No prepayment penalty on floating-rate
+        # home loans"); otherwise the generic MITC wording below.
+        prep = rec.get("seed_prepayment") or ""
+        prep_txt = f" {prep}." if prep else ""
         return [
-            f"Yes, the {lt} can be prepaid after 6 months. Prepayment charges, if any, are as per the Most Important Terms and Conditions for loan {lid}.",
+            f"Yes, the {lt} can be prepaid after 6 months.{prep_txt} Prepayment charges, if any, are as per the Most Important Terms and Conditions for loan {lid}.",
             f"Prepayment is allowed after six months on loan {lid}. Any charges follow the Most Important Terms and Conditions for this {lt}.",
-            f"Loan {lid} can be closed early once six months have passed. Check the MITC for any prepayment charge on this {lt}.",
-            f"Yes — after 6 months, this {lt} may be prepaid in part or in full, subject to the charges in the MITC for loan {lid}.",
+            f"Loan {lid} can be closed early once six months have passed.{prep_txt} Check the MITC for any prepayment charge on this {lt}.",
+            f"Yes — after 6 months, this {lt} may be prepaid in part or in full, subject to the charges in the MITC for loan {lid}.{prep_txt}",
         ][v % 4]
     if t == "amount":
+        # F016: gold loans carry the sourced LTV / valuation note.
+        note = rec.get("seed_amount_note") or ""
+        note_txt = f" {note}." if note else ""
         return [
             f"The sanctioned amount for loan {lid} is Rs. {amt:,} for {rec['purpose']}. The maximum amount depends on income, credit score and collateral.",
             f"Loan {lid} was sanctioned for Rs. {amt:,}, to be used for {rec['purpose']}. How much a borrower can get depends on income, score and collateral.",
-            f"Rs. {amt:,} is the amount sanctioned under loan {lid}. The purpose is {rec['purpose']}; the ceiling varies with income and credit history.",
+            f"Rs. {amt:,} is the amount sanctioned under loan {lid}. The purpose is {rec['purpose']}; the ceiling varies with income and credit history.{note_txt}",
             f"For {rec['purpose']}, the bank sanctioned Rs. {amt:,} on loan {lid}.",
         ][v % 4]
     if t == "moratorium":
         return [
             f"The moratorium period for an education loan is the course period plus 6 to 12 months. For loan {lid}, repayment starts after the moratorium period.",
-            f"Repayment on loan {lid} begins after the moratorium — the course period plus six to twelve months.",
+            f"Repayment on loan {lid} begins after the moratorium — the course period plus six to twelve months. Simple interest is charged during the moratorium period.",
             f"For this education loan, there is no repayment during the course, plus a further 6 to 12 months. Loan {lid} follows that schedule.",
             f"The moratorium for loan {lid} covers the study period and 6–12 months after it, before EMI starts.",
         ][v % 4]
@@ -239,11 +453,18 @@ def answer_for(rec):
 def _context_line(rec):
     """One unique contextual sentence per record, from channel / purpose / status."""
     v = rec.get("variant", 0)
+    terms = rec.get("seed_terms") or []
+    if terms:
+        # F016: one of the record's seed terms, so real terminology
+        # appears in the summary body as well as the answer.
+        term_line = f"The sanction letter for this {rec['loan_type']} records {terms[0]}."
+    else:
+        term_line = f"Servicing branch is {rec['branch']}. The request arrived via {rec['channel']}."
     templates = [
         f"This loan came in through the {rec['channel']} channel, handled at {rec['branch']}.",
         f"The application for {rec['purpose']} was processed at {rec['branch']} and is now {rec['status'].lower()}.",
         f"Requested for {rec['purpose']}, this {rec['loan_type']} is currently {rec['status'].lower()}.",
-        f"Servicing branch is {rec['branch']}. The request arrived via {rec['channel']}.",
+        term_line,
     ]
     return templates[v % 4]
 
@@ -273,18 +494,24 @@ def lines_for(rec):
         f"Channel: {rec['channel']}",
         _context_line(rec),
     ]
+    # F016: the record's seed terms, so every document carries real
+    # terminology from the seeds. Appended after `fields` so the layout-2
+    # reorder above (fields[0..14]) is unaffected.
+    seed_line = []
+    if rec.get("seed_terms"):
+        seed_line = [f"Key terms: {', '.join(rec['seed_terms'])}."]
     if layout == 1:
         # Question-first layout.
-        return [f"Question: {rec['question']}", f"Answer: {a}", ""] + fields + [
+        return [f"Question: {rec['question']}", f"Answer: {a}", ""] + fields + seed_line + [
             "", "Note: This is a synthetic document generated for RAG testing. All names and IDs are fictional."]
     if layout == 2:
         # Status-first layout, fields in a different order.
         reordered = [fields[0], fields[10], fields[11], fields[1], fields[2],
                      fields[5], fields[6], fields[7], fields[8], fields[3],
                      fields[4], fields[9], fields[12], fields[13], fields[14]]
-        return reordered + ["", f"Question: {rec['question']}", f"Answer: {a}",
+        return reordered + seed_line + ["", f"Question: {rec['question']}", f"Answer: {a}",
                             "", "Note: This is a synthetic document generated for RAG testing. All names and IDs are fictional."]
-    return fields + ["", f"Question: {rec['question']}", f"Answer: {a}",
+    return fields + seed_line + ["", f"Question: {rec['question']}", f"Answer: {a}",
                      "", "Note: This is a synthetic document generated for RAG testing. All names and IDs are fictional."]
 
 
