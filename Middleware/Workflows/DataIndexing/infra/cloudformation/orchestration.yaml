@@ -55,7 +55,14 @@ Resources:
         Variables:
           QUEUE_URL:
             Fn::ImportValue: !Sub "${Project}-IndexQueueUrl"
-          AWS_REGION: !Ref AWS::Region
+          # NOTE: do NOT set AWS_REGION here. Lambda reserves that
+          # key — the runtime already provides it, and setting it
+          # fails the function creation with InvalidRequest
+          # ("contains reserved keys ... AWS_REGION"). Same fix as
+          # the Datagen planner, which hit this in AWS-001 run #5
+          # (2026-11-12). The planner reads it via
+          # os.environ.get("AWS_REGION", ...) and gets the
+          # runtime-provided value.
   SfnRole:
     Type: AWS::IAM::Role
     Properties:
