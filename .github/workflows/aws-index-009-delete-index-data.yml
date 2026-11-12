@@ -1,0 +1,73 @@
+name: AWS-Index-009 Delete Index Data (manual — DANGER)
+
+# Manual only, end of life. Run this BEFORE aws-index-010-destroy.yml.
+# It empties the indexes so the stacks can be deleted:
+#   - vector/chunk/document tables in RDS, via a one-off Batch job
+#     (INDEX_MODE=truncate — the job runs inside the VPC, so it can
+#     reach the private RDS instance; a GitHub runner cannot)
+#   - the DynamoDB index-manifest table (deleted outright)
+#   - S3 index markers (index-markers/<run_id>/*.done)
+#   - the OpenSearch Serverless collection, if one was created
+# Nothing here touches the Datagen corpus bucket or its manifest.
+# Indexes are rebuilt by re-running AWS-Index-003..008.
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project prefix"
+        required: true
+        default: "rag-corpus"
+      confirm:
+        description: "Type DELETE-INDEX-DATA to confirm"
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  PROJECT: ${{ inputs.project }}
+
+jobs:
+  delete-index-data:
+    if: inputs.confirm == 'DELETE-INDEX-DATA'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Truncate index tables (one-off Batch job, inside the VPC)
+        run: |
+          JOB_DEF=$(aws batch describe-job-definitions --job-definition-name $PROJECT-indexer --status ACTIVE --query 'jobDefinitions[0].jobDefinitionArn' --output text)
+          JOB_QUEUE=$(aws batch describe-job-queues --job-queue-name $PROJECT-index-queue --query 'jobQueues[0].jobQueueArn' --output text)
+          JOB_ID=$(aws batch submit-job --job-name $PROJECT-truncate-index --job-queue "$JOB_QUEUE" --job-definition "$JOB_DEF" \
+            --container-overrides "environment=[{name=INDEX_MODE,value=truncate}]" \
+            --query 'jobId' --output text)
+          echo "Truncate job: $JOB_ID — waiting for it to finish ..."
+          aws batch wait job-complete --jobs "$JOB_ID" || true
+          STATUS=$(aws batch describe-jobs --jobs "$JOB_ID" --query 'jobs[0].status' --output text)
+          echo "Truncate job status: $STATUS"
+          [ "$STATUS" = "SUCCEEDED" ] || { echo "::error::Truncate job did not succeed ($STATUS) — check the Batch job logs before continuing."; exit 1; }
+
+      - name: Delete DynamoDB index-manifest table
+        run: |
+          aws dynamodb delete-table --table-name $PROJECT-index-manifest || true
+
+      - name: Delete S3 index markers
+        run: |
+          aws s3 rm s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}/index-markers/ --recursive || true
+          echo "Index data deleted — run aws-index-010-destroy.yml next to delete the stacks."
+
+      - name: Delete OpenSearch collection (if one exists)
+        run: |
+          COLL_ID=$(aws opensearchserverless list-collections --collection-filters name=$PROJECT-chunks --query 'collectionSummaries[0].id' --output text 2>/dev/null || true)
+          if [ -n "$COLL_ID" ] && [ "$COLL_ID" != "None" ]; then
+            aws opensearchserverless delete-collection --id "$COLL_ID"
+            echo "Deleted OpenSearch collection $COLL_ID."
+          else
+            echo "No OpenSearch collection — nothing to delete."
+          fi
