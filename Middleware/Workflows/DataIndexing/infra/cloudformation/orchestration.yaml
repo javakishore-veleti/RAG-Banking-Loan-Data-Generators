@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RAG indexing — orchestration stack: Index Planner Lambda + Step Functions state machine. Lambda code (index-planner.zip, the indexer/ package) is uploaded to S3 by the provision workflow."
+Parameters:
+  Project:
+    Type: String
+    Default: rag-corpus
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket holding index-planner.zip (uploaded by the provision workflow).
+  LambdaCodeKey:
+    Type: String
+    Default: lambda/index-planner.zip
+  CorpusBucket:
+    Type: String
+    Description: S3 bucket holding the generated corpus (Datagen output).
+Resources:
+  PlannerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${Project}-index-planner"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:ListBucket, s3:GetObject]
+                Resource:
+                  - !Sub "arn:aws:s3:::${CorpusBucket}"
+                  - !Sub "arn:aws:s3:::${CorpusBucket}/*"
+              - Effect: Allow
+                Action: [sqs:SendMessageBatch, sqs:SendMessage]
+                Resource: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${Project}-index-shards.fifo"
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: "*"
+  PlannerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${Project}-index-planner"
+      Role: !GetAtt PlannerRole.Arn
+      Handler: indexer.planner.lambda_handler
+      Runtime: python3.12
+      Timeout: 300
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Environment:
+        Variables:
+          QUEUE_URL:
+            Fn::ImportValue: !Sub "${Project}-IndexQueueUrl"
+          AWS_REGION: !Ref AWS::Region
+  SfnRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${Project}-index-sfn"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [lambda:InvokeFunction]
+                Resource: !GetAtt PlannerFunction.Arn
+              - Effect: Allow
+                Action: [batch:SubmitJob]
+                Resource: "*"
+  StateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "${Project}-index-run"
+      RoleArn: !GetAtt SfnRole.Arn
+      DefinitionString: !Sub
+        - |
+          {
+            "Comment": "RAG indexing run: plan document shards into SQS, then run one Batch indexer job (sync) that drains the queue.",
+            "StartAt": "PlanShards",
+            "States": {
+              "PlanShards": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::lambda:invoke",
+                "Parameters": {"FunctionName": "${PlannerArn}", "Payload.$": "$"},
+                "Retry": [{"ErrorEquals": ["States.ALL"], "IntervalSeconds": 5, "MaxAttempts": 3, "BackoffRate": 2.0}],
+                "Next": "SubmitBatchWorkers"
+              },
+              "SubmitBatchWorkers": {
+                "Type": "Task",
+                "Resource": "arn:aws:states:::batch:submitJob.sync",
+                "Parameters": {
+                  "JobDefinition": "${IndexJobDefinitionArn}",
+                  "JobName": "rag-corpus-indexer",
+                  "JobQueue": "${IndexJobQueueArn}"
+                },
+                "Retry": [{"ErrorEquals": ["States.ALL"], "IntervalSeconds": 10, "MaxAttempts": 3, "BackoffRate": 2.0}],
+                "End": true
+              }
+            }
+          }
+        - PlannerArn: !GetAtt PlannerFunction.Arn
+          IndexJobDefinitionArn:
+            Fn::ImportValue: !Sub "${Project}-IndexJobDefinitionArn"
+          IndexJobQueueArn:
+            Fn::ImportValue: !Sub "${Project}-IndexJobQueueArn"
+  DLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${Project}-index-dlq-depth"
+      ComparisonOperator: GreaterThanThreshold
+      EvaluationPeriods: 1
+      MetricName: ApproximateNumberOfMessagesVisible
+      Namespace: AWS/SQS
+      Period: 300
+      Statistic: Sum
+      Threshold: 0
+      Dimensions:
+        - Name: QueueName
+          Value: !Sub "${Project}-index-shards-dlq.fifo"
+      AlarmDescription: "Indexing shards are failing and landing in the DLQ."
+Outputs:
+  StateMachineArn:
+    Value: !Ref StateMachine
+    Export:
+      Name: !Sub "${Project}-IndexStateMachineArn"
+  PlannerFunctionName:
+    Value: !Ref PlannerFunction
+    Export:
+      Name: !Sub "${Project}-IndexPlannerFunctionName"
