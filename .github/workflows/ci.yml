@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install -r requirements.txt pytest
-      - run: python -m pytest tests/ -q
-      - run: python -m py_compile src/generator/generator.py src/planner/planner.py src/worker/batch_worker.py
-      - run: python3 uniqueness_check.py --count 50 --seed 7 || true
+      - run: pip install -r Middleware/Workflows/Datagen/requirements.txt pytest
+      - run: python -m pytest Middleware/Workflows/Datagen/tests/ -q
+      - run: python -m py_compile Middleware/Workflows/Datagen/src/generator/generator.py Middleware/Workflows/Datagen/src/planner/planner.py Middleware/Workflows/Datagen/src/worker/batch_worker.py
+      - run: python3 Middleware/Workflows/Datagen/uniqueness_check.py --count 50 --seed 7 || true

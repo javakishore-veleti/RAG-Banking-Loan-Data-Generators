@@ -37,14 +37,14 @@ jobs:
 
       - name: Package Planner Lambda
         run: |
-          cd src/planner && zip -r ../../planner.zip . && cd ../..
+          cd Middleware/Workflows/Datagen/src/planner && zip -r ../../../../../planner.zip . && cd ../../../../..
           aws s3 cp planner.zip s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }}/lambda/planner.zip \
             || aws s3 mb s3://$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} --region $AWS_REGION
 
       - name: Deploy storage stack
         run: |
           aws cloudformation deploy \
-            --template-file infra/cloudformation/storage.yaml \
+            --template-file Middleware/Workflows/Datagen/infra/cloudformation/storage.yaml \
             --stack-name $PROJECT-storage \
             --parameter-overrides Project=$PROJECT \
             --capabilities CAPABILITY_NAMED_IAM
@@ -52,14 +52,14 @@ jobs:
       - name: Build and push worker image
         run: |
           aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com
-          docker build -t $PROJECT-worker:$GITHUB_SHA .
+          docker build -t $PROJECT-worker:$GITHUB_SHA -f Middleware/Workflows/Datagen/Dockerfile Middleware/Workflows/Datagen
           docker tag $PROJECT-worker:$GITHUB_SHA ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-worker:latest
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT-worker:latest
 
       - name: Deploy compute stack (VPC from secrets)
         run: |
           aws cloudformation deploy \
-            --template-file infra/cloudformation/compute.yaml \
+            --template-file Middleware/Workflows/Datagen/infra/cloudformation/compute.yaml \
             --stack-name $PROJECT-compute \
             --parameter-overrides Project=$PROJECT \
               VpcId=${{ secrets.VPC_ID }} \
@@ -71,7 +71,7 @@ jobs:
       - name: Deploy orchestration stack
         run: |
           aws cloudformation deploy \
-            --template-file infra/cloudformation/orchestration.yaml \
+            --template-file Middleware/Workflows/Datagen/infra/cloudformation/orchestration.yaml \
             --stack-name $PROJECT-orchestration \
             --parameter-overrides Project=$PROJECT \
               LambdaCodeBucket=$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} \
