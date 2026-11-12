@@ -50,6 +50,24 @@ Resources:
     Properties:
       DBSubnetGroupDescription: !Sub "${Project} index DB subnets"
       SubnetIds: !Ref SubnetIds
+  # The database needs its own security group: the shared task SG
+  # (SecurityGroupIds) is outbound-only, so a DB using it accepts no
+  # inbound traffic at all — connections to 5432 time out (found by
+  # the in-VPC probe, 2026-11-12). This group lets only the Batch
+  # tasks in, on 5432.
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${Project} RDS PostgreSQL - allow Batch tasks on 5432"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Select [0, !Ref SecurityGroupIds]
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
   IndexDB:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -67,7 +85,7 @@ Resources:
       MasterUsername: ragindex
       MasterUserPassword: !Sub "{{resolve:secretsmanager:${DBSecret}:SecretString:password}}"
       DBSubnetGroupName: !Ref DBSubnetGroup
-      VPCSecurityGroups: !Ref SecurityGroupIds
+      VPCSecurityGroups: [!Ref DBSecurityGroup]
       PubliclyAccessible: false
       MultiAZ: !If [MultiAZCond, true, false]
       DeletionProtection: false
