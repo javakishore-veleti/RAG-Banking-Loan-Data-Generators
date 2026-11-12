@@ -88,13 +88,21 @@ for m in re.finditer(r"^\| (M\d{3}) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|", text, 
     milestones.append((m.group(1), m.group(2).strip(), f"{m.group(3).strip()} — Exit: {m.group(4).strip()}"))
 
 epics = {}  # E001 -> {title, milestone}
-for m in re.finditer(r"^\| (E\d{3}) \| ([^|]+) \| (M\d{3}) \|", text, re.M):
-    epics[m.group(1)] = {"title": m.group(2).strip(), "milestone": m.group(3)}
+# NOTE: E006's milestone is a range ("M003–M005") in the table and in its
+# heading, so the milestone field must not require a single Mxxx — take
+# the first milestone ID in the field. (A single-Mxxx regex dropped E006
+# entirely and crashed the run with KeyError: 'E006'.)
+for m in re.finditer(r"^\| (E\d{3}) \| ([^|]+) \| ([^|]+) \|", text, re.M):
+    mid = re.search(r"M\d{3}", m.group(3))
+    if mid:
+        epics[m.group(1)] = {"title": m.group(2).strip(), "milestone": mid.group(0)}
 
 # Epic milestone from the "### E001 — Title (M001)" headings overrides the table.
-for m in re.finditer(r"^### (E\d{3}) — (.+?) \((M\d{3})\)", text, re.M):
-    epics.setdefault(m.group(1), {})["title"] = m.group(2).strip()
-    epics[m.group(1)]["milestone"] = m.group(3)
+for m in re.finditer(r"^### (E\d{3}) — (.+?) \(([^)]+)\)", text, re.M):
+    mid = re.search(r"M\d{3}", m.group(3))
+    if mid:
+        epics.setdefault(m.group(1), {})["title"] = m.group(2).strip()
+        epics[m.group(1)]["milestone"] = mid.group(0)
 
 features = []  # {id, title, epic, stories:[(id, text)]}
 current_epic = None
@@ -110,9 +118,18 @@ for line in text.splitlines():
     if sm and features:
         features[-1]["stories"].append((sm.group(1), sm.group(2).strip()))
 
-# Feature -> milestone, via its epic.
+# Feature -> milestone, via its epic. Fail fast with a clear message
+# instead of a bare KeyError if an epic is missing from the plan.
 for f in features:
+    if f["epic"] not in epics:
+        sys.exit(f"ERROR: feature {f['id']} belongs to epic {f['epic']}, "
+                 f"which was not parsed from GITHUB_ISSUES.md. Parsed epics: {sorted(epics)}")
     f["milestone"] = epics[f["epic"]]["milestone"]
+
+if len(milestones) != 5 or len(epics) != 9 or len(features) != 33 or sum(len(f['stories']) for f in features) != 85:
+    sys.exit(f"ERROR: unexpected parse counts — milestones={len(milestones)}, "
+             f"epics={len(epics)} ({sorted(epics)}), features={len(features)}, "
+             f"stories={sum(len(f['stories']) for f in features)}. Expected 5/9/33/85.")
 
 print(f"Parsed: {len(milestones)} milestones, {len(epics)} epics, "
       f"{len(features)} features, {sum(len(f['stories']) for f in features)} stories")
