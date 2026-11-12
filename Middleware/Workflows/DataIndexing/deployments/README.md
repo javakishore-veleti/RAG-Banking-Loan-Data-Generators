@@ -24,8 +24,8 @@ The VPC is reused from AWS-001 (`$PROJECT-vpc` stack / secrets /
   `loan-chunks-bm25` collection for hybrid search.
 - **SQS FIFO** `<project>-index-shards.fifo` + DLQ (3 redeliveries).
 - **DynamoDB** `<project>-index-manifest` — per-chunk indexing status.
-- **Step Functions** `<project>-index-run` — PlanShards → Map →
-  CheckDone.
+- **Step Functions** `<project>-index-run` — CustomerCase-PlanShards →
+  CustomerCase-SubmitBatchWorkers.
 
 ## Teardown (end of life, in order)
 
