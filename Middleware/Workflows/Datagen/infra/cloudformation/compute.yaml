@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: "RAG corpus — compute stack: ECR, AWS Batch Fargate Spot, job queue + definition. VPC/subnets come from GitHub Actions secrets."
+Description: "RAG corpus — compute stack: ECR, AWS Batch Fargate Spot, job queue + definition. VPC/subnets come from AWS-001 Provision (secrets, run inputs, or the optional VPC stack)."
 Parameters:
   Project:
     Type: String
