@@ -1,0 +1,29 @@
+name: Close Issues (manual)
+
+# One manual run closes the 57 issues whose work is already done
+# and verified in the repo (M001 complete, M002 complete, E004 +
+# F017 in M003). The list lives in scripts/close_issues.py, with
+# the GitHub issue number and the evidence for each issue.
+# It is idempotent: re-running it skips already-closed issues.
+# Closing via the repo's own GITHUB_TOKEN avoids one approval
+# per issue. Do NOT add other issue IDs to the script without
+# Kishore approving them — closing is the status change itself.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  close-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Close verified-done issues (57)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 scripts/close_issues.py
