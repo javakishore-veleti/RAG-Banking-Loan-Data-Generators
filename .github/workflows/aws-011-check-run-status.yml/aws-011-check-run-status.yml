@@ -1,0 +1,196 @@
+name: AWS-011 Check Run Status (reusable + manual)
+
+# Answers "what's happening with that run?" from GitHub alone — no AWS
+# console needed. Point it at a Step Functions execution (a generate run
+# or an index run) and it reports the execution status, waits for it to
+# finish if asked, shows the failure cause if it failed, and counts the
+# results that actually landed (documents in S3 for a generate run,
+# indexed chunks in DynamoDB for an index run).
+#
+# How to use it:
+#   Actions -> Check Run Status -> Run workflow, pick kind + format +
+#   year, and either paste the execution name (e.g.
+#   2024-pdf-20261112-194132) or leave run_id blank to check the latest
+#   execution for that state machine.
+#
+# The generate/index workflows only START an execution and exit — the
+# real work runs after, in Batch. Without this workflow, the only way
+# to know whether the work finished is the AWS console.
+#
+# AWS credentials come ONLY from GitHub Actions secrets: AWS_ACCESS_KEY_ID,
+# AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_ACCOUNT_ID, PROJECT.
+# Nothing is hard-coded. This workflow is read-only: it changes nothing.
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "What kind of run to check"
+        required: true
+        type: choice
+        default: "generate"
+        options:
+          - generate
+          - index
+      format:
+        description: "Document format"
+        required: false
+        type: choice
+        default: "pdf"
+        options: [pdf, docx, xlsx, csv, txt, png]
+      year:
+        description: "Loan year (S3 year=YYYY partition)"
+        required: false
+        default: "2024"
+      run_id:
+        description: "Step Functions execution name (blank = latest execution for this state machine)"
+        required: false
+        default: ""
+      wait:
+        description: "Wait for the execution to finish before reporting"
+        required: false
+        type: choice
+        default: "true"
+        options: ["true", "false"]
+      wait_timeout_minutes:
+        description: "How long to wait, in minutes (only if wait is true)"
+        required: false
+        default: "30"
+  workflow_call:
+    inputs:
+      kind:
+        required: true
+        type: string
+      format:
+        required: false
+        type: string
+        default: "pdf"
+      year:
+        required: false
+        type: string
+        default: "2024"
+      run_id:
+        required: false
+        type: string
+        default: ""
+      wait:
+        required: false
+        type: string
+        default: "true"
+      wait_timeout_minutes:
+        required: false
+        type: string
+        default: "30"
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_REGION:
+        required: true
+      AWS_ACCOUNT_ID:
+        required: true
+      PROJECT:
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  PROJECT: ${{ secrets.PROJECT }}
+
+jobs:
+  check-status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Resolve the execution to check
+        id: resolve
+        run: |
+          # NOTE: workflow_call inputs are all `type: string` (a `type`
+          # is required on every reusable input; `type: number` rejects
+          # the wrappers' string values — see AWS-003 runs #1/#2,
+          # 2026-11-12). Values are only interpolated into CLI text.
+          if [ "${{ inputs.kind }}" = "index" ]; then SM="${PROJECT}-index-run"; else SM="${PROJECT}-run"; fi
+          SM_ARN="arn:aws:states:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:$SM"
+          if [ -n "${{ inputs.run_id }}" ]; then
+            EXEC_ARN="arn:aws:states:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:execution:$SM:${{ inputs.run_id }}"
+            EXEC_NAME="${{ inputs.run_id }}"
+          else
+            echo "No run_id given — taking the latest execution of $SM."
+            EXEC_ARN=$(aws stepfunctions list-executions --state-machine-arn "$SM_ARN" --max-results 1 --query "executions[0].executionArn" --output text)
+            EXEC_NAME=$(basename "$EXEC_ARN")
+          fi
+          if [ -z "$EXEC_ARN" ] || [ "$EXEC_ARN" = "None" ]; then
+            echo "No executions found for state machine $SM."; exit 1
+          fi
+          echo "execution_arn=$EXEC_ARN" >> "$GITHUB_OUTPUT"
+          echo "execution_name=$EXEC_NAME" >> "$GITHUB_OUTPUT"
+          echo "Checking execution: $EXEC_NAME ($SM)"
+
+      - name: Wait for the execution to finish (if asked)
+        if: inputs.wait == 'true'
+        run: |
+          TIMEOUT="${{ inputs.wait_timeout_minutes }}"
+          ELAPSED=0
+          while true; do
+            STATUS=$(aws stepfunctions describe-execution --execution-arn "${{ steps.resolve.outputs.execution_arn }}" --query "status" --output text)
+            echo "[$ELAPSED min] execution status: $STATUS"
+            if [ "$STATUS" != "RUNNING" ]; then break; fi
+            ELAPSED=$((ELAPSED + 1))
+            if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+              echo "Timed out after ${TIMEOUT} minutes — execution is still RUNNING."
+              exit 1
+            fi
+            sleep 60
+          done
+
+      - name: Report status (and failure cause, if any)
+        id: report
+        run: |
+          STATUS=$(aws stepfunctions describe-execution --execution-arn "${{ steps.resolve.outputs.execution_arn }}" --query "status" --output text)
+          START=$(aws stepfunctions describe-execution --execution-arn "${{ steps.resolve.outputs.execution_arn }}" --query "startDate" --output text)
+          STOP=$(aws stepfunctions describe-execution --execution-arn "${{ steps.resolve.outputs.execution_arn }}" --query "stopDate" --output text)
+          echo "Execution: ${{ steps.resolve.outputs.execution_name }}"
+          echo "Status:    $STATUS"
+          echo "Started:   $START"
+          echo "Stopped:   $STOP"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "TIMED_OUT" ] || [ "$STATUS" = "ABORTED" ]; then
+            echo "--- failure detail from the execution history ---"
+            aws stepfunctions get-execution-history --execution-arn "${{ steps.resolve.outputs.execution_arn }}" \
+              --query "events[?contains(type, 'Failed')].{type: type, at: timestamp, error: error, cause: cause}" \
+              --output json
+          fi
+
+      - name: Count what actually landed
+        run: |
+          BUCKET="${PROJECT}-corpus-${{ secrets.AWS_ACCOUNT_ID }}"
+          if [ "${{ inputs.kind }}" = "index" ]; then
+            # One DynamoDB row per indexed chunk (chunk_id is the key).
+            # A full-table scan: fine for a status check at test scale;
+            # at millions of chunks it gets slow — use it for spot checks.
+            CHUNKS=$(aws dynamodb scan --table-name "${PROJECT}-index-manifest" --select COUNT --query "Count" --output text)
+            echo "Indexed chunks in DynamoDB (${PROJECT}-index-manifest): $CHUNKS"
+            if [ -n "${{ inputs.run_id }}" ]; then
+              MARKERS=$(aws s3 ls "s3://$BUCKET/index-markers/${{ inputs.run_id }}/" --recursive 2>/dev/null | wc -l)
+              echo "Index shard markers for this run: $MARKERS"
+            fi
+          else
+            DOCS=$(aws s3 ls "s3://$BUCKET/raw/${{ inputs.format }}/year=${{ inputs.year }}/" --recursive | wc -l)
+            echo "Documents in S3 (raw/${{ inputs.format }}/year=${{ inputs.year }}/): $DOCS"
+            MANIFEST=$(aws s3 ls "s3://$BUCKET/manifests/${{ inputs.format }}-${{ inputs.year }}.jsonl" 2>/dev/null | wc -l)
+            if [ "$MANIFEST" = "1" ]; then echo "Ground-truth manifest present: manifests/${{ inputs.format }}-${{ inputs.year }}.jsonl"; fi
+          fi
+
+      - name: Fail the run if the execution failed
+        if: steps.report.outputs.status == 'FAILED' || steps.report.outputs.status == 'TIMED_OUT' || steps.report.outputs.status == 'ABORTED'
+        run: |
+          echo "Execution ${{ steps.resolve.outputs.execution_name }} ended ${{ steps.report.outputs.status }} — see the failure detail above."
+          exit 1
