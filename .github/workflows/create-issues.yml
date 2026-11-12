@@ -1,0 +1,27 @@
+name: Create Issues (manual)
+
+# One manual run creates all milestones + issues from GITHUB_ISSUES.md.
+# This exists because creating 127 issues via the Muse GitHub
+# connector needs a fresh approval per issue. This workflow uses the
+# repo's own GITHUB_TOKEN, so one manual run does the whole set.
+# It is idempotent: re-running it skips issues that already exist
+# (E001–E007 were created earlier and will be skipped).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Create milestones, labels, epics, features, stories
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: python3 scripts/create_issues.py
