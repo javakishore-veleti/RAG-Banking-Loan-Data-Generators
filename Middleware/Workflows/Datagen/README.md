@@ -40,7 +40,7 @@ python3 uniqueness_check.py --count 200 --seed 7
 See `deployments/README.md`. In short: the image is built from
 this folder as the Docker build context
 (`docker build -f Dockerfile .`) by the
-`provision-infra.yml` workflow, pushed to ECR as
+`aws-001-provision-infra.yml` workflow, pushed to ECR as
 `<project>-worker`, and the CloudFormation stacks in `infra/`
 are deployed by the same workflow. Data generation is triggered
 manually, one workflow per format, via the root
