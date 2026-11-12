@@ -25,6 +25,7 @@
 13. [Extensibility — how to add things](#13-extensibility--how-to-add-things)
 14. [Open questions and future work](#14-open-questions-and-future-work)
 15. [Decision log](#15-decision-log)
+16. [Indexing design — layers, metadata, embedding models](#16-indexing-design--layers-metadata-embedding-models)
 
 ---
 
@@ -543,9 +544,14 @@ verification steps, not unit tests.
    S3 size) before committing to 200k/year.
 5. **First CloudFormation deployment:** the templates are validated,
    not applied. The first provision run is the real test.
-6. **RAG ingestion stage:** chunking, embedding, vector store —
-   deliberately out of scope here; design it as a separate repo /
-   stage once the corpus exists.
+6. **RAG retrieval stage:** indexing (chunking, embedding, vector
+   store) is now built — see §16. Retrieval and answering (hybrid
+   search, self-query, decomposition, reranking, agents) belong to
+   the API-Services phase, as two endpoints: LangChain agent and
+   AWS Strands agent.
+7. **First indexing deployment:** the indexing templates are
+   validated, not applied. The first `aws-index-001-provision` run
+   is the real test.
 
 ---
 
@@ -563,3 +569,79 @@ verification steps, not unit tests.
 | 2026-11-12 | Dedup on natural-hash PK, not manifest PK | Surrogate PKs cannot stop same-fields-different-ID duplicates; only a PK on the hash can | GSI uniqueness (does not exist), post-hoc dedup only |
 | 2026-11-12 | GitHub Secrets for AWS + VPC | No secrets in the repo; VPC details are deployment-specific | Hard-coding, OIDC (stronger, more setup — see §10) |
 | 2026-11-12 | No chunking / ingestion in this repo | Chunking belongs to the ingestion stage, after the corpus exists | Mixing generation and ingestion in one repo |
+| 2026-11-12 | Indexing as a separate app (Middleware/Workflows/DataIndexing), own image, own stacks | Same platform rule as Datagen: one app, one image, one set of stacks; retrieval reads indexes, never the generator | Bolting indexing onto Datagen's image and stacks (couples two lifecycles) |
+| 2026-11-12 | Five indexing layers L0–L4, one index per layer (IDX-1…IDX-4) | Mirrors the reference video's layers; each layer is independently testable and replaceable | One monolithic "index everything" step (untestable, unreusable) |
+| 2026-11-12 | pgvector is the source of truth; OpenSearch BM25 is optional and best-effort | Hybrid search needs both, but a learning setup should work with vector search alone; unsynced OpenSearch rows are retried, never blocking | OpenSearch mandatory (cost + a second source of truth to keep in sync) |
+| 2026-11-12 | Embedding model per document type, default if none configured | One config file (`config/embedding_models.yaml`); resolution workflow input → per-format override → default | One model hard-coded in code (no per-format tuning, no override path) |
+| 2026-11-12 | Deterministic chunk ids (`sha1(doc_id:chunk_index:model)`) | Re-runs upsert instead of duplicating; a re-embed with a new model creates new ids, so old vectors are never overwritten | Random UUID chunk ids (every re-run duplicates) |
+| 2026-11-12 | `latest` flag = newest version per loan | Follows the video's stale-version fix: retrieval must prefer the current version and never silently mix old rules | No versioning (old policy versions answer as if current) |
+| 2026-11-12 | Bedrock failover to the default model, once, on AccessDenied/Validation/NotFound | A missing model enablement must not kill a whole run; the model actually used is recorded per chunk | Fail the run on the first rejected model (brittle for a learning setup) |
+| 2026-11-12 | Indexing reuses AWS-001's VPC by default | One VPC for the whole platform; Datagen stays the VPC owner and its AWS-010 deletes it | A second VPC per app (double NAT cost, double config) |
+
+---
+
+## 16. Indexing design — layers, metadata, embedding models
+
+DataIndexing (`Middleware/Workflows/DataIndexing/`) reads the corpus
+Datagen wrote to S3 and builds the indexes the future API Services
+will retrieve from. It follows the reference video's layers
+(Balaji Chippada, "Build Production-Ready Advanced RAG From
+Scratch": 10 NIST PDFs → Docling → 500/100 splitter → metadata
+enrichment with `latest=true/false` → OpenAI embeddings → pgvector;
+baseline RAG fixed by hybrid search + self-query + decomposition +
+reranker).
+
+### 16.1 Index schemas
+
+- **IDX-1 `documents`** — `doc_id` (PK), `loan_id`, `loan_type`,
+  `format`, `year`, `policy_version`, `latest`, `source_s3_key`,
+  `indexed_at`. One row per source document.
+- **IDX-2 `chunks`** — `chunk_id` (PK, deterministic
+  `sha1(doc_id:chunk_index:model_slug)`), `doc_id` (FK),
+  `chunk_index`, `content`, plus the same filterable metadata as
+  IDX-1 (`loan_type`, `year`, `latest`, `policy_version`,
+  `embedding_model`, `opensearch_synced`).
+- **IDX-3 `chunk_embeddings_<model slug>`** — `chunk_id` (PK/FK),
+  `embedding vector(<dims>)`, HNSW index with
+  `vector_cosine_ops`. One table per embedding model, so a model
+  change creates a new table instead of mixing dimensions.
+  `model_slug` is the model id lower-cased and sanitised, e.g.
+  `amazon.titan-embed-text-v2:0` → `titan_v2`.
+- **IDX-4 `loan-chunks-bm25`** (OpenSearch Serverless, optional) —
+  same chunk content + metadata, for BM25 keyword search in hybrid
+  retrieval. Dual-written best-effort; rows with
+  `opensearch_synced=false` are retried on the next run.
+
+### 16.2 Metadata — why it is a first-class layer
+
+Self-query filtering (the video's fix for "wrong version answers")
+only works if the metadata exists at index time: `latest` (newest
+version per loan), `policy_version`, `loan_type`, `year`, `format`.
+Metadata is enriched in L2 — before embedding — so the embedding
+model and the stores never have to know where it came from.
+
+### 16.3 Embedding model configuration
+
+`config/embedding_models.yaml`:
+
+- `default_model`: `amazon.titan-embed-text-v2:0` (1024 dims).
+- Per-format overrides (`pdf`, `docx`, `xlsx`, `csv`, `txt`, `png`):
+  a model id, or `null` to use the default. All are `null` today —
+  one model for everything until a per-format difference is measured.
+- `dimensions` table for known models; unknown models are probed
+  once (`probe_dimensions`) and cached per run.
+
+Resolution order: workflow input `embedding_model` → per-format
+override → default. Failover: if Bedrock rejects the resolved model
+(AccessDenied / Validation / NotFound — typically model access not
+enabled in the console), the embedder tries the default model once
+and records the model actually used. If the default is also rejected,
+the document fails and the shard retries via SQS/Batch.
+
+### 16.4 What indexing does NOT do
+
+- No retrieval, no hybrid search, no reranking, no agents — those
+  read these indexes from API-Services.
+- No OCR for PNG at index time — the manifest ground-truth
+  description is indexed instead.
+- No multi-modal embeddings yet — text embeddings only.
