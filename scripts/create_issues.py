@@ -8,26 +8,39 @@ This script runs *inside* GitHub Actions instead, using the repo's
 own GITHUB_TOKEN, so one manual workflow run creates everything
 with no per-issue approvals.
 
-Usage (GitHub Actions — see .github/workflows/create-issues.yml):
+Usage (GitHub Actions — see.github/workflows/create-issues.yml):
     python3 scripts/create_issues.py
+
+The same script creates the indexing plan too (see
+.github/workflows/create-index-issues.yml), via env vars:
+    PLAN_FILE=GITHUB_ISSUES_INDEXING.md \
+    EXPECTED_MILESTONES=2 EXPECTED_EPICS=5 EXPECTED_FEATURES=13 \
+    EXPECTED_STORIES=35 \
+    PLAN_SCOPE="Data indexing only. No retrieval, reranking, agents, or UI." \
+        python3 scripts/create_issues.py
 
 Usage (local, with a PAT — one token, no per-issue approvals):
     GH_TOKEN=<token> GH_REPO=javakishore-veleti/RAG-Banking-Loan-Data-Generators \
         python3 scripts/create_issues.py
 
 Behaviour:
-  - Parses GITHUB_ISSUES.md in the repo root (milestones, epics,
-    features, stories) — 5 milestones, 9 epics, 33 features,
-    85 stories, all with 3-digit IDs (M001, E001, F001, S001).
+  - Parses the plan file in the repo root (milestones, epics,
+    features, stories) — Datagen plan: 5 milestones, 9 epics,
+    33 features, 85 stories, all with 3-digit IDs (M001, E001,
+    F001, S001). Indexing plan: 2 milestones (M006–M007),
+    5 epics (E010–E014), 13 features (F034–F046), 35 stories
+    (S086–S120).
   - Creates the 5 milestones, the labels `epic` / `feature` / `story`
     (if missing), then the issues in order: epics, features, stories.
   - Topical labels are added on top of the type label, per epic /
     feature / story: aws, s3, dynamodb, sqs, batch, lambda,
     step-functions, cloudformation, ecr, cloudwatch, cloudtrail,
-    datagen-wf, github-actions, infra-setup, infra-destroy,
+    datagen-wf, index-wf, github-actions, infra-setup, infra-destroy,
     data-delete, generator, format-pdf/docx/xlsx/csv/txt/png,
     manifest, partitioning, uniqueness, dedup, realism, testing,
-    docs, observability. See TOPIC_LABELS below.
+    docs, observability, and the indexing labels bedrock, pgvector,
+    opensearch, embeddings, data-indexing, chunking, metadata, rds,
+    hybrid-search. See TOPIC_LABELS below.
   - Idempotent: issues are skipped if an issue with the same title
     already exists (E001–E007 were created earlier by hand and are
     skipped, not duplicated). Safe to re-run. On a re-run, existing
@@ -67,7 +80,7 @@ def api(method, path, payload=None):
         method=method,
         data=json.dumps(payload).encode() if payload is not None else None,
         headers={**HEADERS, "Content-Type": "application/json"},
-    )
+)
     try:
         with urllib.request.urlopen(req) as resp:
             return resp.status, json.loads(resp.read() or b"{}")
@@ -80,7 +93,7 @@ def paged(path):
     out, page = [], 1
     while True:
         status, data = api("GET", f"{path}?state=all&per_page=100&page={page}")
-        if status != 200 or not data:
+        if status!= 200 or not data:
             return out
         out.extend(data)
         if len(data) < 100:
@@ -88,15 +101,28 @@ def paged(path):
         page += 1
 
 
-# --- Parse GITHUB_ISSUES.md -------------------------------------------------
-PLAN = Path(__file__).resolve().parents[1] / "GITHUB_ISSUES.md"
+# --- Parse the plan file -------------------------------------------------
+# PLAN_FILE env selects the plan (default GITHUB_ISSUES.md; the
+# indexing plan is GITHUB_ISSUES_INDEXING.md). Expected counts are
+# env-vars too, so the same script validates either plan.
+PLAN = Path(__file__).resolve().parents[1] / os.environ.get("PLAN_FILE", "GITHUB_ISSUES.md")
+PLAN_NAME = PLAN.name
+PLAN_SCOPE = os.environ.get(
+    "PLAN_SCOPE",
+    "Synthetic data generation only. No RAG ingestion, chunking, embedding, or retrieval.")
+EXPECTED = (
+    int(os.environ.get("EXPECTED_MILESTONES", "5")),
+    int(os.environ.get("EXPECTED_EPICS", "9")),
+    int(os.environ.get("EXPECTED_FEATURES", "33")),
+    int(os.environ.get("EXPECTED_STORIES", "85")),
+)
 text = PLAN.read_text()
 
-milestones = []  # (id, title, description)
+milestones = [] # (id, title, description)
 for m in re.finditer(r"^\| (M\d{3}) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|", text, re.M):
     milestones.append((m.group(1), m.group(2).strip(), f"{m.group(3).strip()} — Exit: {m.group(4).strip()}"))
 
-epics = {}  # E001 -> {title, milestone}
+epics = {} # E001 -> {title, milestone}
 # NOTE: E006's milestone is a range ("M003–M005") in the table and in its
 # heading, so the milestone field must not require a single Mxxx — take
 # the first milestone ID in the field. (A single-Mxxx regex dropped E006
@@ -113,7 +139,7 @@ for m in re.finditer(r"^### (E\d{3}) — (.+?) \(([^)]+)\)", text, re.M):
         epics.setdefault(m.group(1), {})["title"] = m.group(2).strip()
         epics[m.group(1)]["milestone"] = mid.group(0)
 
-features = []  # {id, title, epic, stories:[(id, text)]}
+features = [] # {id, title, epic, stories:[(id, text)]}
 current_epic = None
 for line in text.splitlines():
     hm = re.match(r"^### (E\d{3}) —", line)
@@ -135,10 +161,12 @@ for f in features:
                  f"which was not parsed from GITHUB_ISSUES.md. Parsed epics: {sorted(epics)}")
     f["milestone"] = epics[f["epic"]]["milestone"]
 
-if len(milestones) != 5 or len(epics) != 9 or len(features) != 33 or sum(len(f['stories']) for f in features) != 85:
+if (len(milestones), len(epics), len(features),
+        sum(len(f['stories']) for f in features))!= EXPECTED:
     sys.exit(f"ERROR: unexpected parse counts — milestones={len(milestones)}, "
              f"epics={len(epics)} ({sorted(epics)}), features={len(features)}, "
-             f"stories={sum(len(f['stories']) for f in features)}. Expected 5/9/33/85.")
+             f"stories={sum(len(f['stories']) for f in features)}. Expected {EXPECTED} "
+             f"from {PLAN_NAME}.")
 
 print(f"Parsed: {len(milestones)} milestones, {len(epics)} epics, "
       f"{len(features)} features, {sum(len(f['stories']) for f in features)} stories")
@@ -157,6 +185,11 @@ EPIC_LABELS = {
     "E007": ["aws", "cloudformation", "infra-setup", "s3", "dynamodb", "sqs", "cloudtrail"],
     "E008": ["aws", "datagen-wf", "github-actions", "batch", "lambda", "step-functions", "sqs"],
     "E009": ["observability", "cloudwatch", "testing", "docs", "infra-destroy", "data-delete"],
+    "E010": ["data-indexing", "chunking", "metadata"],
+    "E011": ["bedrock", "embeddings"],
+    "E012": ["pgvector", "opensearch", "hybrid-search"],
+    "E013": ["aws", "index-wf", "github-actions", "batch", "lambda", "step-functions", "sqs"],
+    "E014": ["observability", "cloudwatch", "testing", "docs"],
 }
 FEATURE_LABELS = {
     "F001": ["generator"], "F002": ["generator"], "F003": ["generator"],
@@ -178,6 +211,12 @@ FEATURE_LABELS = {
     "F029": ["testing"], "F030": ["docs"],
     "F032": ["infra-destroy", "github-actions", "cloudformation"],
     "F033": ["data-delete", "s3", "dynamodb"],
+    "F034": ["data-indexing"], "F035": ["chunking"], "F036": ["metadata", "data-indexing"],
+    "F037": ["bedrock", "embeddings"], "F038": ["embeddings", "data-indexing"],
+    "F039": ["pgvector", "rds"], "F040": ["opensearch", "hybrid-search"],
+    "F041": ["lambda", "sqs"], "F042": ["batch", "sqs"],
+    "F043": ["index-wf", "github-actions"], "F044": ["aws", "observability"],
+    "F045": ["testing", "observability"], "F046": ["docs", "testing"],
 }
 LABEL_COLORS = {
     "epic": "5319e7", "feature": "0e8a16", "story": "fbca04",
@@ -191,6 +230,10 @@ LABEL_COLORS = {
     "testing": "0e8a16", "docs": "0075ca", "observability": "e36209",
     "format-pdf": "d73a4a", "format-docx": "1d76db", "format-xlsx": "0e8a16",
     "format-csv": "fbca04", "format-txt": "bfdadc", "format-png": "5319e7",
+    "bedrock": "ff9900", "pgvector": "4053d6", "opensearch": "1d76db",
+    "embeddings": "5319e7", "data-indexing": "0e8a16", "index-wf": "0e8a16",
+    "rds": "4053d6", "chunking": "c2e0c6", "metadata": "bfdadc",
+    "hybrid-search": "1d76db",
 }
 
 # --- Existing state (idempotency) -------------------------------------------
@@ -253,7 +296,7 @@ def add_sub_issue(parent, child):
     status, _ = api("POST", f"/issues/{parent['number']}/sub_issues",
                     {"sub_issue_id": child["id"]})
     if status not in (200, 201):
-        print(f"  (sub-issue link for #{child['number']} -> #{parent['number']} "
+        print(f" (sub-issue link for #{child['number']} -> #{parent['number']} "
               f"not applied: {status}; body link remains)")
 
 created_epics = {}
@@ -261,9 +304,8 @@ for eid, e in sorted(epics.items()):
     issue = create_issue(
         f"[Epic] {eid} — {e['title']}",
         f"## Epic — {eid} {e['title']}\n\n**Milestone:** {e['milestone']}\n"
-        f"**Type:** Epic\n**Scope:** Synthetic data generation only. "
-        f"No RAG ingestion, chunking, embedding, or retrieval.\n\n"
-        f"See GITHUB_ISSUES.md for the features and stories in this epic.",
+        f"**Type:** Epic\n**Scope:** {PLAN_SCOPE}\n\n"
+        f"See {PLAN_NAME} for the features and stories in this epic.",
         ["epic"] + EPIC_LABELS.get(eid, []), e["milestone"])
     if issue:
         created_epics[eid] = issue
