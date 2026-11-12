@@ -65,3 +65,39 @@ jobs:
           aws cloudformation describe-stacks --stack-name "$STACK" --query 'Stacks[0].{StackName:StackName,StackStatus:StackStatus,Created:CreationTime}' --output table || echo "describe-stacks: stack $STACK not found or not readable."
           echo "== Recent stack events (newest first): $STACK =="
           aws cloudformation describe-stack-events --stack-name "$STACK" --max-items 30 --query 'StackEvents[].{Time:Timestamp,LogicalId:LogicalResourceId,Status:ResourceStatus,Reason:ResourceStatusReason}' --output table || echo "describe-stack-events: no events available for stack $STACK."
+
+      - name: Failed changeset detail
+        run: |
+          STACK="${{ inputs.stack_name }}"
+          echo "== Change sets for $STACK =="
+          for CS in $(aws cloudformation list-change-sets --stack-name "$STACK" --query 'Summaries[].ChangeSetName' --output text 2>/dev/null); do
+            echo "--- Change set: $CS ---"
+            aws cloudformation describe-change-set --stack-name "$STACK" --change-set-name "$CS" --query '{Status:Status,StatusReason:StatusReason}' --output table || echo "describe-change-set failed for $CS."
+          done
+          echo "(no change sets listed above means none exist for this stack)"
+
+      - name: Do the storage template's named resources already exist?
+        # Only meaningful for the *-storage stack. The early-validation
+        # hook AWS::EarlyValidation::ResourceExistenceCheck fails the
+        # changeset when a resource the template wants to create already
+        # exists outside the stack — this step tests exactly that, for
+        # every named resource in storage.yaml. Read-only.
+        run: |
+          STACK="${{ inputs.stack_name }}"
+          case "$STACK" in
+            *-storage) PROJECT="${STACK%-storage}" ;;
+            *) echo "Resource-existence check is only defined for a *-storage stack; skipping for $STACK."; exit 0 ;;
+          esac
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          echo "Project: $PROJECT, Account: $ACCOUNT"
+          check() { # check <label> <command...>
+            local label="$1"; shift
+            if "$@" >/dev/null 2>&1; then echo "EXISTS: $label"; else echo "missing: $label"; fi
+          }
+          check "S3 bucket $PROJECT-corpus-$ACCOUNT" aws s3api head-bucket --bucket "$PROJECT-corpus-$ACCOUNT"
+          check "S3 bucket $PROJECT-trail-$ACCOUNT" aws s3api head-bucket --bucket "$PROJECT-trail-$ACCOUNT"
+          check "DynamoDB table $PROJECT-manifest" aws dynamodb describe-table --table-name "$PROJECT-manifest"
+          check "DynamoDB table $PROJECT-dedup" aws dynamodb describe-table --table-name "$PROJECT-dedup"
+          check "SQS queue $PROJECT-shards.fifo" aws sqs get-queue-url --queue-name "$PROJECT-shards.fifo"
+          check "SQS queue $PROJECT-shards-dlq.fifo" aws sqs get-queue-url --queue-name "$PROJECT-shards-dlq.fifo"
+          if aws cloudtrail describe-trails --query "trailList[?Name=='$PROJECT-trail']" --output text | grep -q "$PROJECT-trail"; then echo "EXISTS: CloudTrail $PROJECT-trail"; else echo "missing: CloudTrail $PROJECT-trail"; fi
