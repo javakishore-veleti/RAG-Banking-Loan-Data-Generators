@@ -2,7 +2,9 @@
 """Close the issues whose work is already done and verified in the repo.
 
 Kishore approved closing 57 issues on 2026-11-12 (M001 complete,
-M002 complete, E004 + F017 in M003). The list below is explicit:
+M002 complete, E004 + F017 in M003). Kishore approved closing
+F016 + S036-S038 on 2026-11-12 (real-artifact seeding, 6 commits,
+HEAD bc5bab8, CI green). The list below is explicit:
 issue ID -> GitHub issue number, verified against the live repo
 before this script was written. Do not close anything else.
 
@@ -23,6 +25,13 @@ Evidence per group (also posted as the closing comment on each issue):
 - F017 / S039-S040: log-uniform amounts and realistic rate /
   tenure / credit-score ranges per loan type in
   src/generator/generator.py.
+- F016 / S036-S038: real-artifact seeding — data/seeds/SEEDS.md
+  (21 fetched public artifacts), data/seeds/terminology.yaml
+  (551 lines, sourced rates/checklists/terms per loan type),
+  generator.py loads it at runtime (PyYAML or built-in parser)
+  and picks seed terms/documents/fees per record, Dockerfile
+  copies data/seeds/ into the worker image; 11/11 tests pass,
+  uniqueness wording-only mean 0.109.
 
 Idempotent: already-closed issues are skipped, not re-commented.
 Run via the manual "Close Issues (manual)" workflow, which uses
@@ -39,6 +48,7 @@ EVIDENCE = {
     "manifest": "Verified done: manifest.jsonl with question + answer per file, S3 keys raw/<format>/year=YYYY/month=MM/day=DD/ by loan start date, --year flag in generator and planner. M002 complete.",
     "uniqueness": "Verified done: uniqueness_check.py (wording-only 5-gram Jaccard) + uniqueness_report.md; v2 wording-only mean 0.128, same-type pairs >0.5 down to 1.5% on 200 records; --max-overlap 0.65 reject/regenerate loop.",
     "realism": "Verified done: log-uniform amounts and realistic rate / tenure / credit-score ranges per loan type in src/generator/generator.py.",
+    "f016": "Verified done: real-artifact seeding — data/seeds/SEEDS.md (21 fetched public artifacts), data/seeds/terminology.yaml (551 lines, sourced rates/checklists/terms per loan type), generator.py loads it at runtime and picks seed terms/documents/fees per record, Dockerfile copies data/seeds/ into the worker image; 11/11 tests pass, uniqueness wording-only mean 0.109. F016 complete.",
 }
 
 # (issue id, GitHub issue number, evidence group)
@@ -74,6 +84,8 @@ CLOSE = (
        ("S035", 59, "uniqueness")]
     + [("F017", 64, "realism"), ("S039", 65, "realism"),
        ("S040", 66, "realism")]
+    + [("F016", 60, "f016"), ("S036", 61, "f016"),
+       ("S037", 62, "f016"), ("S038", 63, "f016")]
 )
 
 
@@ -94,7 +106,7 @@ def api(method, path, payload=None):
 
 
 def main():
-    assert len(CLOSE) == 57, f"expected 57 issues to close, got {len(CLOSE)}"
+    assert len(CLOSE) == 61, f"expected 61 issues to close, got {len(CLOSE)}"
     closed = skipped = failed = 0
     for issue_id, number, group in CLOSE:
         try:
