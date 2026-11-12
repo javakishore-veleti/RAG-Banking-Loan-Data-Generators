@@ -204,4 +204,5 @@ jobs:
             --stack-name $PROJECT-orchestration \
             --parameter-overrides Project=$PROJECT \
               LambdaCodeBucket=$PROJECT-corpus-${{ secrets.AWS_ACCOUNT_ID }} \
-              LambdaCodeKey=lambda/planner.zip
+              LambdaCodeKey=lambda/planner.zip \
+            --capabilities CAPABILITY_NAMED_IAM
