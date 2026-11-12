@@ -56,8 +56,12 @@ jobs:
       - name: Start Step Functions run for ${{ inputs.format }} / ${{ inputs.year }}
         run: |
           RUN_ID="${{ inputs.year }}-${{ inputs.format }}-index-$(date +%Y%m%d-%H%M%S)"
+          # "default" (the dropdown's default) means: use config resolution,
+          # so pass an empty model and let the indexer resolve it.
+          MODEL="${{ inputs.embedding_model }}"
+          if [ "$MODEL" = "default" ]; then MODEL=""; fi
           aws stepfunctions start-execution \
             --state-machine-arn arn:aws:states:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:${{ secrets.PROJECT }}-index-run \
             --name "$RUN_ID" \
-            --input "{\"bucket\": \"${{ secrets.PROJECT }}-corpus-${{ secrets.AWS_ACCOUNT_ID }}\", \"format\": \"${{ inputs.format }}\", \"year\": ${{ inputs.year }}, \"shard_size\": ${{ inputs.shard_size }}, \"seed\": ${{ inputs.seed }}, \"embedding_model\": \"${{ inputs.embedding_model }}\", \"run_id\": \"$RUN_ID\"}"
-          echo "Started index run $RUN_ID for format=${{ inputs.format }} year=${{ inputs.year }} embedding_model=${{ inputs.embedding_model }} (blank = config default)"
+            --input "{\"bucket\": \"${{ secrets.PROJECT }}-corpus-${{ secrets.AWS_ACCOUNT_ID }}\", \"format\": \"${{ inputs.format }}\", \"year\": ${{ inputs.year }}, \"shard_size\": ${{ inputs.shard_size }}, \"seed\": ${{ inputs.seed }}, \"embedding_model\": \"$MODEL\", \"run_id\": \"$RUN_ID\"}"
+          echo "Started index run $RUN_ID for format=${{ inputs.format }} year=${{ inputs.year }} embedding_model=${MODEL:-<config default>}"
