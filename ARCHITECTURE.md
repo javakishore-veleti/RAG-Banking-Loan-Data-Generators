@@ -142,9 +142,8 @@ State machine (`Middleware/Workflows/Datagen/infra/stepfunctions/state-machine.j
 `orchestration.yaml`):
 
 ```
-PlanShards (Lambda:invoke, retry 3×, backoff)
-  → SubmitBatchWorkers (batch:submitJob.sync, retry 3×, backoff)
-  → Succeed
+CustomerCase-PlanShards (Lambda:invoke, retry 3×, backoff)
+  → CustomerCase-SubmitBatchWorkers (batch:submitJob.sync, retry 3×, backoff)
 ```
 
 `submitJob.sync` waits for the Batch job to finish, so the state
