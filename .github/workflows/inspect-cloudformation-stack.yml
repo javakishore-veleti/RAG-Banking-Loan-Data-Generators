@@ -17,6 +17,11 @@ name: Inspect CloudFormation Stack (reusable + manual)
 #      its log, when you don't know the log stream name.
 #   4. RDS logs: pass rds_instance (e.g. rag-corpus-index-db) to print
 #      the instance status/endpoint and the PostgreSQL log's FATAL lines.
+#   5. DB probe: pass db_probe=1 to submit a one-off Batch job (indexer
+#      image, command override) that prints the psycopg version, the
+#      endpoint's resolved IP, and tries a plain connect with a 15s
+#      timeout — the test that shows whether the path from inside the
+#      VPC to the database works.
 #   5. Reusable: another workflow calls it with `uses:
 #      ./.github/workflows/inspect-cloudformation-stack.yml` and passes
 #      `stack_name` plus the three AWS secrets below.
@@ -49,6 +54,11 @@ on:
         type: string
       rds_instance:
         description: "RDS DB instance identifier, e.g. rag-corpus-index-db (dumps its PostgreSQL log)"
+        required: false
+        default: ""
+        type: string
+      db_probe:
+        description: "Set to 1 to run a one-off in-VPC DB connection probe (Batch job with the indexer image)"
         required: false
         default: ""
         type: string
@@ -90,6 +100,11 @@ on:
         type: string
       rds_instance:
         description: "RDS DB instance identifier, e.g. rag-corpus-index-db (dumps its PostgreSQL log)"
+        required: false
+        default: ""
+        type: string
+      db_probe:
+        description: "Set to 1 to run a one-off in-VPC DB connection probe (Batch job with the indexer image)"
         required: false
         default: ""
         type: string
@@ -209,3 +224,40 @@ jobs:
             echo "== Last 25 lines of $LOG =="
             echo "$DATA" | tail -25
           done
+      - name: Probe the database connection from inside the VPC (if db_probe given)
+        # Submits a one-off Batch job with the indexer image and a command
+        # override: prints the psycopg version, the endpoint's resolved
+        # IP, then tries a plain connect with a 15s timeout and SELECT
+        # version(). Runs inside the VPC with the same role/subnets as
+        # the indexer, so it tests the exact path the worker uses.
+        # Read-only (connect + SELECT version()).
+        if: ${{ inputs.db_probe != '' }}
+        run: |
+          REGION="${{ secrets.AWS_REGION }}"
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          QARN="arn:aws:batch:${REGION}:${ACCOUNT}:job-queue/${{ secrets.PROJECT }}-index-queue"
+          DEF="arn:aws:batch:${REGION}:${ACCOUNT}:job-definition/${{ secrets.PROJECT }}-indexer"
+          PROBE='import os, socket, json, boto3, psycopg
+          host = os.environ["DB_HOST"]
+          print("psycopg", psycopg.__version__, flush=True)
+          print("host", host, "->", socket.gethostbyname(host), flush=True)
+          sm = boto3.client("secretsmanager", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+          pw = json.loads(sm.get_secret_value(SecretId=os.environ["DB_SECRET_ARN"])["SecretString"])["password"]
+          print("password length", len(pw), flush=True)
+          conn = psycopg.connect(host=host, dbname=os.environ.get("DB_NAME", "ragindex"), user=os.environ.get("DB_USER", "ragindex"), password=pw, connect_timeout=15)
+          print("connected, server version", conn.info.server_version, flush=True)
+          print(conn.execute("select version()").fetchone()[0], flush=True)
+          conn.close()
+          print("PROBE OK", flush=True)'
+          OVERRIDES=$(jq -n --arg cmd "$PROBE" '{command: ["python3", "-c", $cmd]}')
+          JOBID=$(aws batch submit-job --job-name rag-corpus-db-probe --job-queue "$QARN" --job-definition "$DEF" --container-overrides "$OVERRIDES" --query jobId --output text)
+          echo "Probe job: $JOBID"
+          for i in $(seq 1 20); do
+            STATUS=$(aws batch describe-jobs --jobs "$JOBID" --query "jobs[0].status" --output text)
+            echo "probe status: $STATUS"
+            if [ "$STATUS" = "SUCCEEDED" ] || [ "$STATUS" = "FAILED" ]; then break; fi
+            sleep 20
+          done
+          STREAM=$(aws batch describe-jobs --jobs "$JOBID" --query "jobs[0].attempts[-1].container.logStreamName" --output text)
+          echo "Log stream: $STREAM"
+          aws logs get-log-events --log-group-name "/aws/batch/job" --log-stream-name "$STREAM" --limit 100 --start-from-head --query 'events[].message' --output text || echo "get-log-events failed for $STREAM."
