@@ -1,9 +1,0 @@
-output "corpus_bucket" { value = aws_s3_bucket.corpus.bucket }
-output "manifest_table" { value = aws_dynamodb_table.manifest.name }
-output "queue_url" { value = aws_sqs_queue.shards.url }
-output "dlq_url" { value = aws_sqs_queue.dlq.url }
-output "ecr_repository_url" { value = aws_ecr_repository.worker.repository_url }
-output "job_queue_arn" { value = aws_batch_job_queue.main.arn }
-output "job_definition_arn" { value = aws_batch_job_definition.worker.arn }
-output "state_machine_arn" { value = aws_sfn_state_machine.main.arn }
-output "planner_function_name" { value = aws_lambda_function.planner.function_name }
