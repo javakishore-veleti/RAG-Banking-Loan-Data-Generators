@@ -12,22 +12,24 @@ on:
       format:
         required: true
         type: string
+      # NOTE: these inputs are strings, not numbers. The per-format
+      # wrappers pass workflow_dispatch inputs, which GitHub always
+      # delivers as strings — a `type: number` here rejects them
+      # with "Unexpected value '100'" before any job starts
+      # (AWS-003 run #1, 2026-11-12). The values are only ever
+      # interpolated into shell/JSON text, so strings are fine.
       count:
         required: false
-        type: number
-        default: 1000
+        default: "1000"
       year:
         required: false
-        type: number
-        default: 2024
+        default: "2024"
       shard_size:
         required: false
-        type: number
-        default: 100
+        default: "100"
       seed:
         required: false
-        type: number
-        default: 7
+        default: "7"
       embedding_model:
         required: false
         type: string
