@@ -24,6 +24,7 @@
 12. [Alternatives considered](#12-alternatives-considered)
 13. [Deployment topology](#13-deployment-topology)
 14. [Limitations and known gaps](#14-limitations-and-known-gaps)
+15. [Data Indexing — Bedrock + pgVector (+ OpenSearch)](#15-data-indexing--bedrock--pgvector--opensearch)
 
 ---
 
@@ -56,8 +57,10 @@
 
 **Non-goals (explicitly out of scope):**
 
-- RAG ingestion: chunking, embedding, vector storage, retrieval.
-  The corpus is the *input* to that later stage.
+- RAG **retrieval and answering**: hybrid search, self-query,
+  decomposition, reranking, agents. Indexing (chunking, embedding,
+  vector storage) is now built — see §15 — but nothing answers a
+  question yet. That is the API-Services phase.
 - A policy corpus. See `DESIGN.md §3`.
 - Real-time generation. All generation is batch, triggered manually.
 
@@ -518,3 +521,67 @@ GitHub environment per account.
 6. **No multi-format run in one workflow.** Each format is a
    separate manual run by design. A combined run would be a new
    workflow that calls `aws-002-generate.yml` six times.
+7. **No indexing deployment has happened yet.** The indexing
+   templates and workflows are validated (YAML/JSON/Python), not
+   applied. The first `aws-index-001-provision` run is the real test.
+8. **OpenSearch is optional and off by default.** The BM25 index
+   (IDX-4) only exists when `opensearch_enabled=true`. pgvector is
+   the source of truth; OpenSearch is dual-written best-effort.
+9. **PNG text is not OCR'd at index time.** The loader returns no
+   text for PNG; the pipeline falls back to the manifest's ground-
+   truth description. OCR (or a multi-modal embedder) is future work.
+
+---
+
+## 15. Data Indexing — Bedrock + pgVector (+ OpenSearch)
+
+DataIndexing (`Middleware/Workflows/DataIndexing/`) turns the generated
+corpus into searchable indexes, following the five layers from the
+reference video (Balaji Chippada, "Build Production-Ready Advanced
+RAG From Scratch"):
+
+- **L0 Load** — `loader.py` extracts text per format (pypdf,
+  python-docx, openpyxl, csv, plain text). PNG yields no text; the
+  pipeline falls back to the manifest ground-truth description.
+- **L1 Chunk** — `chunker.py` recursive split, 500 tokens / 100
+  overlap (implemented as 2000 / 400 chars), separators
+  `\n\n, \n, ". ", " "`.
+- **L2 Enrich** — `enricher.py` attaches metadata to every chunk:
+  `doc_id, loan_id, loan_type, format, year, policy_version,
+  latest, page_hint, source_s3_key, embedding_model, indexed_at`.
+  `latest` is true only for the newest version of a loan; chunk ids
+  are deterministic `sha1(doc_id:chunk_index:model_slug)`.
+- **L3 Embed** — `embedder.py` calls AWS Bedrock. Model resolution
+  order: workflow input → per-format override in
+  `config/embedding_models.yaml` → `default_model`
+  (`amazon.titan-embed-text-v2:0`, 1024 dims). If Bedrock rejects a
+  configured model, it fails over to the default once and records
+  the model actually used. Throttling retries 5x (backoff + jitter).
+- **L4 Store** — `stores.py` writes four indexes: IDX-1 `documents`,
+  IDX-2 `chunks`, IDX-3 pgvector `chunk_embeddings_<model slug>`
+  (HNSW, cosine), IDX-4 OpenSearch `loan-chunks-bm25` (optional,
+  best-effort dual-write; `opensearch_synced` flags unsynced rows).
+
+**Execution** mirrors Datagen's shape, reusing its VPC, its secrets
+and its conventions: Planner Lambda lists `raw/<fmt>/year=YYYY/`
+keys and shards them (default 100 docs/shard) into a FIFO SQS queue;
+Batch on Fargate Spot runs the indexer image; Step Functions
+(`<Project>-index-run`) submits one Batch worker per shard.
+SQS redrives 3x → DLQ; Batch retries 3x; the planner has no
+dependencies on the Datagen planner — it is a separate Lambda in the
+orchestration stack (`$PROJECT-index-orchestration`).
+
+**Workflows:** `aws-index-001-provision.yml` (manual),
+`aws-index-002-index.yml` (reusable), `aws-index-003…008-index-<fmt>.yml`
+(thin, one per format), `aws-index-009-delete-index-data.yml`
+(manual, typed `DELETE-INDEX-DATA`), `aws-index-010-destroy.yml`
+(manual, typed `DESTROY-INDEX`). Provision reuses AWS-001's VPC by
+default (`vpc_mode=reuse-existing`); `create-new` deploys Datagen's
+`vpc.yaml`. The shared VPC stack itself is deleted by Datagen's
+AWS-010, never by AWS-Index-010.
+
+**Cost note (learning setup):** the pgvector database is
+`db.t4g.micro` (free-tier eligible) and Batch is Fargate Spot, so a
+small test run costs little. Bedrock embeddings are the main
+variable cost. OpenSearch Serverless is the expensive optional
+piece — leave it off for the first runs.
