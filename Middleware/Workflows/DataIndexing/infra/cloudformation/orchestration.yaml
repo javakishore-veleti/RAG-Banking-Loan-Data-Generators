@@ -82,8 +82,20 @@ Resources:
                 Action: [lambda:InvokeFunction]
                 Resource: !GetAtt PlannerFunction.Arn
               - Effect: Allow
-                Action: [batch:SubmitJob]
+                Action: [batch:SubmitJob, batch:DescribeJobs, batch:TerminateJob]
                 Resource: "*"
+              - Effect: Allow
+                # The state machine uses batch:submitJob.sync — Step
+                # Functions creates an EventBridge managed rule to
+                # watch the Batch job, and the execution role must be
+                # allowed to manage that rule. Without these, the
+                # state machine fails to create with
+                # "'...SfnRole...' is not authorized to create
+                # managed-rule". Same fix as the Datagen state
+                # machine, which hit this in AWS-001 run #6
+                # (2026-11-12).
+                Action: [events:PutRule, events:PutTargets, events:DescribeRule, events:DeleteRule, events:RemoveTargets]
+                Resource: !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/*"
   StateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
