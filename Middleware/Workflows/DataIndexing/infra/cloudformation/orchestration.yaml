@@ -105,16 +105,18 @@ Resources:
         - |
           {
             "Comment": "RAG indexing run: plan document shards into SQS, then run one Batch indexer job (sync) that drains the queue.",
-            "StartAt": "PlanShards",
+            "StartAt": "CustomerCase-PlanShards",
             "States": {
-              "PlanShards": {
+              "CustomerCase-PlanShards": {
+                "Comment": "Split the run into work batches and queue them (Index Planner Lambda).",
                 "Type": "Task",
                 "Resource": "arn:aws:states:::lambda:invoke",
                 "Parameters": {"FunctionName": "${PlannerArn}", "Payload.$": "$"},
                 "Retry": [{"ErrorEquals": ["States.ALL"], "IntervalSeconds": 5, "MaxAttempts": 3, "BackoffRate": 2.0}],
-                "Next": "SubmitBatchWorkers"
+                "Next": "CustomerCase-SubmitBatchWorkers"
               },
-              "SubmitBatchWorkers": {
+              "CustomerCase-SubmitBatchWorkers": {
+                "Comment": "Run one Batch indexer job that drains the queue and indexes the documents.",
                 "Type": "Task",
                 "Resource": "arn:aws:states:::batch:submitJob.sync",
                 "Parameters": {
