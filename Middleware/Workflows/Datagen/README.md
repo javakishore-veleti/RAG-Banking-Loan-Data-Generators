@@ -35,6 +35,32 @@ python3 src/generator/generator.py --count 10 --out ./corpus --year 2024
 python3 uniqueness_check.py --count 200 --seed 7
 ```
 
+## Real-artifact seeding (F016)
+
+The generator's wording comes from real public loan documents, not
+invented text:
+
+- `data/seeds/SEEDS.md` — manifest of 21 fetched artifacts (RBI Master
+  Directions, SBI / HDFC / ICICI / PNB / Bank of Baroda loan pages and
+  MITC sheets, MUDRA / PMMY, IBA Model Education Loan Scheme, CFPB
+  complaint data), each with its public URL and what was extracted.
+- `data/seeds/terminology.yaml` — per loan type: sourced rate ranges,
+  purposes, document checklists, terms and fees. Every entry carries
+  the seed ID it came from.
+- `src/generator/generator.py` loads the file at runtime (PyYAML if
+  available, otherwise a built-in minimal parser — the Batch worker
+  image has no PyYAML) and picks seed terms, documents and fees per
+  record. If the file is missing, the generator falls back to its
+  built-in terms and still works standalone.
+- `tests/test_seed_terminology.py` checks the file loads for all 7 loan
+  types, every term traces to a listed seed, generated descriptions
+  contain seed terminology, and determinism still holds.
+
+To refresh: fetch the source again, update the entry in `SEEDS.md`
+(and the fetch date), change the affected entries in
+`terminology.yaml`, then run the tests above plus
+`python3 uniqueness_check.py --count 50 --seed 7`.
+
 ## Deployments
 
 See `deployments/README.md`. In short: the image is built from
