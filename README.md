@@ -36,6 +36,8 @@
 12. [Troubleshooting](#12-troubleshooting)
 13. [Working in Cursor](#13-working-in-cursor)
 14. [Related docs](#14-related-docs)
+15. [Data Indexing — Bedrock + pgVector (+ OpenSearch)](#15-data-indexing--bedrock--pgvector--opensearch)
+16. [What's next — API Services (LangChain / Strands)](#16-whats-next--api-services-langchain--strands)
 
 ---
 
@@ -56,9 +58,10 @@
 
 **This is not:**
 
-- A RAG system itself. There is no chunking, embedding, vector store,
-  or retrieval in this repo. Those are a later stage. Chunking is
-  deliberately out of scope here — see `DESIGN.md`.
+- A RAG system itself — yet. Indexing (chunking, embedding, vector
+  store) now lives in `Middleware/Workflows/DataIndexing/` (§15).
+  Retrieval and answering (hybrid search, reranking, agents) are the
+  next stage, in `Middleware/API-Services/` (§16).
 - Real customer data. All names, loan IDs, branches, amounts, and
   dates are fictional / synthetic. Do not put real customer data
   through this generator.
@@ -130,29 +133,42 @@ This repo is organised as a platform, not a single app:
 ```
 .
 ├── README.md, ARCHITECTURE.md, DESIGN.md, GITHUB_ISSUES.md   # docs — start here
+├── GITHUB_ISSUES_INDEXING.md   # issues plan for the indexing phase (M006/M007)
 ├── .github/workflows/      # GitHub Actions (must live at repo root)
-│   ├── ci.yml, create-issues.yml, close-issues.yml
+│   ├── ci.yml, create-issues.yml, create-index-issues.yml, close-issues.yml
 │   ├── aws-001-provision-infra.yml, aws-002-generate.yml, aws-003…aws-008-generate-<format>.yml
-│   └── aws-010-destroy-infra.yml, aws-009-delete-data.yml
+│   ├── aws-010-destroy-infra.yml, aws-009-delete-data.yml
+│   ├── aws-index-001-provision.yml, aws-index-002-index.yml, aws-index-003…aws-index-008-index-<format>.yml
+│   └── aws-index-010-destroy.yml, aws-index-009-delete-index-data.yml
 ├── scripts/                # repo tooling (issue creation / closing)
 ├── Middleware/             # server-side apps
 │   ├── Workflows/
-│   │   └── Datagen/        # THIS APP — synthetic loan-data generation (ETL)
-│   │       ├── Dockerfile, requirements.txt   # its own Batch worker image
-│   │       ├── src/
-│   │       │   ├── generator/generator.py     # SHARED bottom layer — generator
-│   │       │   ├── planner/planner.py         # SHARED — Lambda: SQS shards
-│   │       │   └── worker/batch_worker.py     # SHARED — Batch worker
-│   │       ├── infra/
-│   │       │   ├── cloudformation/            # storage / compute / orchestration
-│   │       │   ├── stepfunctions/             # state-machine.json
-│   │       │   └── archive-terraform/         # superseded — reference only
-│   │       ├── scripts/    # run_local.sh, enqueue_shards.py (DLQ replay)
-│   │       ├── tests/      # generator unit tests
-│   │       ├── deployments/  # how the Datagen image + stacks are deployed
-│   │       ├── uniqueness_check.py, uniqueness_report.md
+│   │   ├── Datagen/        # synthetic loan-data generation (ETL)
+│   │   │   ├── Dockerfile, requirements.txt   # its own Batch worker image
+│   │   │   ├── src/
+│   │   │   │   ├── generator/generator.py     # SHARED bottom layer — generator
+│   │   │   │   ├── planner/planner.py         # SHARED — Lambda: SQS shards
+│   │   │   │   └── worker/batch_worker.py     # SHARED — Batch worker
+│   │   │   ├── infra/
+│   │   │   │   ├── cloudformation/            # storage / compute / orchestration
+│   │   │   │   ├── stepfunctions/             # state-machine.json
+│   │   │   │   └── archive-terraform/         # superseded — reference only
+│   │   │   ├── scripts/    # run_local.sh, enqueue_shards.py (DLQ replay)
+│   │   │   ├── tests/      # generator unit tests
+│   │   │   ├── deployments/  # how the Datagen image + stacks are deployed
+│   │   │   ├── uniqueness_check.py, uniqueness_report.md
+│   │   │   └── README.md
+│   │   └── DataIndexing/   # index the corpus for RAG retrieval (§15)
+│   │       ├── Dockerfile, requirements.txt   # its own Batch indexer image
+│   │       ├── config/embedding_models.yaml   # embedding model per format + default
+│   │       ├── src/indexer/  # loader, chunker, enricher, Bedrock embedder,
+│   │       │                 # pgvector/OpenSearch stores, pipeline, planner, worker
+│   │       ├── infra/cloudformation/          # indexing / orchestration stacks
+│   │       ├── scripts/    # run_local.sh (tests + dry-run, no AWS)
+│   │       ├── tests/      # indexer unit tests
+│   │       ├── deployments/  # how the indexer image + stacks are deployed
 │   │       └── README.md
-│   └── API-Services/       # FUTURE — loan / RAG query APIs (not built yet)
+│   └── API-Services/       # FUTURE — loan / RAG query APIs (§16, not built yet)
 └── Portals/
     └── Loan-Advisor/       # FUTURE — customer-facing Angular app (not built yet)
 ```
@@ -498,6 +514,9 @@ locally by default — that is expected; they run in the Docker image
 | Same shard runs twice | That is expected on retry — check the `.done` marker; it should skip on replay | If it re-generates, the marker write failed — check S3 permissions |
 | Uniqueness check is slow | Pairwise Jaccard is O(n²) | Keep `--count` at 200 for the check; at 1M scale use MinHash/LSH in the worker, not pairwise comparison |
 | `terraform` files are missing | Intentional — Terraform is archived | Use CloudFormation under `Middleware/Workflows/Datagen/infra/cloudformation/`; the old Terraform is in `Middleware/Workflows/Datagen/infra/archive-terraform/` for reference only |
+| AWS-Index run fails: Bedrock `AccessDenied` | Model access not enabled in Bedrock, or wrong model id | Enable the model in the Bedrock console; the run fails over to the default model and records it — check `embedding_model` in the `chunks` table |
+| Index worker cannot reach RDS | Wrong VPC / subnets, or DB secret unreadable | AWS-Index-001 reuses AWS-001's VPC by default — run AWS-001 first; check the worker's `DB_SECRET_ARN` and Batch logs |
+| Index shards land in the DLQ | Worker exception, e.g. Bedrock throttling or DB error | Read CloudWatch Logs `/aws/batch/job`; fix the cause, then re-run the same AWS-Index-003…008 workflow (chunk ids make it idempotent) |
 
 ---
 
@@ -533,5 +552,82 @@ editor) with the docs as context:
   failure modes, cost and security.
 - `DESIGN.md` — design decisions, data model, interfaces, invariants,
   uniqueness and dedup design, extensibility, open questions.
+- `GITHUB_ISSUES_INDEXING.md` — issues plan for the indexing phase
+  (M006/M007, E010–E014, F034–F046, S086–S120, 55 issues).
 - `uniqueness_report.md` — measured before/after uniqueness numbers
   (in the goal files, alongside the generator).
+
+---
+
+## 15. Data Indexing — Bedrock + pgVector (+ OpenSearch)
+
+Datagen generates the documents; DataIndexing makes them retrievable.
+It follows the layers in Balaji Chippada's video "Build
+Production-Ready Advanced RAG From Scratch": load → chunk → enrich
+(metadata) → embed → store. The retrieval techniques from that video
+(hybrid search, self-query, decomposition, reranking) live in the API
+phase (§16) — this phase only builds the indexes they read.
+
+**The indexes (one per layer):**
+
+| Index | Where | Content |
+|---|---|---|
+| IDX-1 `documents` | RDS table `documents` | One row per source document + metadata |
+| IDX-2 `chunks` | RDS table `chunks` | One row per chunk + filterable metadata (`loan_type`, `year`, `latest`, `policy_version`) |
+| IDX-3 vectors | pgvector `chunk_embeddings_<model>` | One vector table per embedding model, HNSW index (cosine) |
+| IDX-4 keyword | OpenSearch `loan-chunks-bm25` | BM25 text index for hybrid search. Optional — off unless `opensearch_enabled=true` |
+
+**Embedding models — one per document type, with a default:**
+`Middleware/Workflows/DataIndexing/config/embedding_models.yaml` sets
+`default_model` (`amazon.titan-embed-text-v2:0`, 1024 dims) and optional
+per-format overrides (`pdf: cohere.embed-english-v3`, …; `null` means
+"use the default"). Resolution order: workflow input
+`embedding_model` → per-format override → default. If a configured
+model is rejected by Bedrock (not enabled / access denied), the
+embedder fails over to the default model once and records the model
+actually used in the chunk metadata. Enable Bedrock model access in
+the AWS console (one time) before the first run.
+
+**Retry & failover:** Bedrock throttling retries with exponential
+backoff (5 attempts); SQS redelivery 3x → DLQ; Batch retry 3x; Step
+Functions retries failed shards; chunk ids are deterministic
+(`sha1(doc_id:chunk_index:model)`) so re-runs upsert instead of
+duplicating; `.done` markers per shard. pgvector is the source of
+truth — OpenSearch is dual-written best-effort and unsynced rows are
+retried on the next run.
+
+**Run it:**
+
+1. Set the same 5 GitHub secrets as Datagen (§8) — no new secrets.
+   The RDS password is generated into Secrets Manager by the stack.
+2. **AWS-Index-001 Provision** — RDS PostgreSQL (pgvector), SQS FIFO
+   + DLQ, DynamoDB index manifest, ECR, Batch, Step Functions. It
+   reuses AWS-001's VPC by default. Set `opensearch_enabled=true`
+   only if you want IDX-4.
+3. **AWS-Index-003 … AWS-Index-008** — index one format for one
+   year. Start small (100 documents), check row counts, then scale.
+
+**Local (no AWS):** `bash Middleware/Workflows/DataIndexing/scripts/run_local.sh`
+(unit tests + dry-run of load → chunk → enrich).
+
+**Teardown (in order):** AWS-Index-009 Delete Index Data, then
+AWS-Index-010 Destroy. The shared VPC stack is deleted by Datagen's
+AWS-010, not here.
+
+---
+
+## 16. What's next — API Services (LangChain / Strands)
+
+Not built yet — planned, so the indexing work lands in the right shape:
+
+- `Middleware/API-Services/` will host **two agents behind two
+  different API endpoints**, both reading the indexes from §15:
+  a **LangChain agent** endpoint and an **AWS Strands agent**
+  endpoint, so the two approaches can be compared on the same corpus
+  and the same golden questions.
+- `Portals/Loan-Advisor/` (Angular) will consume those endpoints —
+  never the indexes or Datagen directly.
+- The retrieval layer from the video (hybrid search with RRF,
+  self-query metadata filtering, decomposition, cross-encoder
+  reranking) belongs to this phase, not to DataIndexing. Its issues
+  will get their own plan file when the phase starts.
