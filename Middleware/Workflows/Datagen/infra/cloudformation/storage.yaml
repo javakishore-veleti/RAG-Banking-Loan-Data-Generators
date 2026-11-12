@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RAG corpus — storage stack: S3 corpus bucket, DynamoDB manifest + dedup, SQS FIFO + DLQ, CloudTrail audit logging."
+Parameters:
+  Project:
+    Type: String
+    Default: rag-corpus
+Resources:
+  CorpusBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Project}-corpus-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: IntelligentTiering
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: INTELLIGENT_TIERING
+  ManifestTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Project}-manifest"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: doc_id
+          AttributeType: S
+        - AttributeName: loan_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: doc_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: loan_id-index
+          KeySchema:
+            - AttributeName: loan_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+  # Dedup table: PK is the hash of the unique description fields.
+  # PutItem with ConditionExpression attribute_not_exists(hash) is the
+  # atomic duplicate claim — this is what stops unique-field duplicates,
+  # not the doc_id PK in the manifest table.
+  DedupTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Project}-dedup"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: natural_hash
+          AttributeType: S
+      KeySchema:
+        - AttributeName: natural_hash
+          KeyType: HASH
+  ShardsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Project}-shards-dlq.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      MessageRetentionPeriod: 1209600
+  ShardsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${Project}-shards.fifo"
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      VisibilityTimeout: 3600
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt ShardsDLQ.Arn
+        maxReceiveCount: 3
+  # CloudTrail: every AWS API call (provision, generate, delete) is
+  # logged to a separate versioned bucket, with log-file validation.
+  TrailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${Project}-trail-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  TrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TrailBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: [s3:GetBucketAcl, s3:PutObject]
+            Resource:
+              - !Sub "arn:aws:s3:::${Project}-trail-${AWS::AccountId}"
+              - !Sub "arn:aws:s3:::${Project}-trail-${AWS::AccountId}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub "arn:aws:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${Project}-trail"
+  CorpusTrail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: TrailBucketPolicy
+    Properties:
+      TrailName: !Sub "${Project}-trail"
+      S3BucketName: !Ref TrailBucket
+      IsLogging: true
+      EnableLogFileValidation: true
+      IncludeGlobalServiceEvents: true
+      IsMultiRegionTrail: true
+Outputs:
+  CorpusBucket:
+    Value: !Ref CorpusBucket
+    Export:
+      Name: !Sub "${Project}-CorpusBucket"
+  ManifestTable:
+    Value: !Ref ManifestTable
+    Export:
+      Name: !Sub "${Project}-ManifestTable"
+  DedupTable:
+    Value: !Ref DedupTable
+    Export:
+      Name: !Sub "${Project}-DedupTable"
+  QueueUrl:
+    Value: !Ref ShardsQueue
+    Export:
+      Name: !Sub "${Project}-QueueUrl"
+  DLQUrl:
+    Value: !Ref ShardsDLQ
+    Export:
+      Name: !Sub "${Project}-DLQUrl"

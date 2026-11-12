@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RAG corpus — compute stack: ECR, AWS Batch Fargate Spot, job queue + definition. VPC/subnets come from GitHub Actions secrets."
+Parameters:
+  Project:
+    Type: String
+    Default: rag-corpus
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+  MaxVcpus:
+    Type: Number
+    Default: 64
+Resources:
+  WorkerRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${Project}-worker"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: batch.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
+  BatchTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${Project}-batch-task"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject, s3:HeadObject]
+                Resource: !Sub "arn:aws:s3:::${Project}-corpus-${AWS::AccountId}/*"
+              - Effect: Allow
+                Action: [dynamodb:PutItem]
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Project}-manifest"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Project}-dedup"
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${Project}-shards.fifo"
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/batch/*"
+  BatchExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  ComputeEnv:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      ComputeEnvironmentName: !Sub "${Project}-fargate-spot"
+      Type: MANAGED
+      State: ENABLED
+      ComputeResources:
+        Type: FARGATE_SPOT
+        MaxvCpus: !Ref MaxVcpus
+        Subnets: !Ref SubnetIds
+        SecurityGroupIds: !Ref SecurityGroupIds
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+  JobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      JobQueueName: !Sub "${Project}-queue"
+      State: ENABLED
+      Priority: 1
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref ComputeEnv
+  JobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: !Sub "${Project}-worker"
+      Type: container
+      PlatformCapabilities: [FARGATE]
+      RetryStrategy:
+        Attempts: 3
+      ContainerProperties:
+        Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WorkerRepo}:latest"
+        JobRoleArn: !GetAtt BatchTaskRole.Arn
+        ExecutionRoleArn: !GetAtt BatchExecutionRole.Arn
+        ResourceRequirements:
+          - Type: VCPU
+            Value: "2"
+          - Type: MEMORY
+            Value: "4096"
+        Environment:
+          - Name: CORPUS_BUCKET
+            Value: !Sub "${Project}-corpus-${AWS::AccountId}"
+          - Name: MANIFEST_TABLE
+            Value: !Sub "${Project}-manifest"
+          - Name: QUEUE_URL
+            Value:
+              Fn::ImportValue: !Sub "${Project}-QueueUrl"
+          - Name: AWS_REGION
+            Value: !Ref AWS::Region
+        LogConfiguration:
+          LogDriver: awslogs
+Outputs:
+  RepositoryUrl:
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${WorkerRepo}"
+    Export:
+      Name: !Sub "${Project}-RepositoryUrl"
+  JobQueueArn:
+    Value: !Ref JobQueue
+    Export:
+      Name: !Sub "${Project}-JobQueueArn"
+  JobDefinitionArn:
+    Value: !Ref JobDefinition
+    Export:
+      Name: !Sub "${Project}-JobDefinitionArn"
