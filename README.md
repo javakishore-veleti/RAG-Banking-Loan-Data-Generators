@@ -414,7 +414,7 @@ then the run fails at the first step naming the missing secret.
 Manual trigger (GitHub Actions, per format + year)
   │
   ▼
-Step Functions  (state machine: PlanShards → SubmitBatchWorkers)
+Step Functions  (state machine: CustomerCase-PlanShards → CustomerCase-SubmitBatchWorkers)
   │  input: {total_per_format, shard_size, formats: ["pdf"], year, seed, run_id}
   ▼
 Planner Lambda  (splits 200k into 20 shards of 10k, enqueues to SQS)
