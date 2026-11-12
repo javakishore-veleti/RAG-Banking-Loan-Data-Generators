@@ -153,6 +153,7 @@ jobs:
 
       - name: Report status (and failure cause, if any)
         id: report
+                if: always()
         run: |
           STATUS=$(aws stepfunctions describe-execution --execution-arn "${{ steps.resolve.outputs.execution_arn }}" --query "status" --output text)
           START=$(aws stepfunctions describe-execution --execution-arn "${{ steps.resolve.outputs.execution_arn }}" --query "startDate" --output text)
@@ -170,6 +171,7 @@ jobs:
           fi
 
       - name: Count what actually landed
+              if: always()
         run: |
           BUCKET="${PROJECT}-corpus-${{ secrets.AWS_ACCOUNT_ID }}"
           if [ "${{ inputs.kind }}" = "index" ]; then
