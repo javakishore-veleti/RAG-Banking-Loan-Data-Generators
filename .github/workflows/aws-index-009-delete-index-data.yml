@@ -48,7 +48,12 @@ jobs:
             --container-overrides "environment=[{name=INDEX_MODE,value=truncate}]" \
             --query 'jobId' --output text)
           echo "Truncate job: $JOB_ID — waiting for it to finish ..."
-          aws batch wait job-complete --jobs "$JOB_ID" || true
+          for i in $(seq 1 20); do
+            sleep 20
+            STATUS=$(aws batch describe-jobs --jobs "$JOB_ID" --query 'jobs[0].status' --output text)
+            echo "Truncate job status: $STATUS (poll $i/20)"
+            if [ "$STATUS" = "SUCCEEDED" ] || [ "$STATUS" = "FAILED" ]; then break; fi
+          done
           STATUS=$(aws batch describe-jobs --jobs "$JOB_ID" --query 'jobs[0].status' --output text)
           echo "Truncate job status: $STATUS"
           [ "$STATUS" = "SUCCEEDED" ] || { echo "::error::Truncate job did not succeed ($STATUS) — check the Batch job logs before continuing."; exit 1; }
