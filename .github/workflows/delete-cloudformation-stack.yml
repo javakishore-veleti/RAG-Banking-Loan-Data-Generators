@@ -1,0 +1,72 @@
+name: Delete CloudFormation Stack (reusable + manual)
+
+# Deletes ONE CloudFormation stack and waits until it is gone.
+#
+# Two ways to use it:
+#   1. Manually: Actions -> Delete CloudFormation Stack -> Run workflow,
+#      pick the stack name from the dropdown (rag-corpus-vpc,
+#      rag-corpus-storage, rag-corpus-compute, rag-corpus-orchestration,
+#      rag-corpus-indexing, rag-corpus-index-orchestration).
+#   2. Reusable: another workflow calls it with `uses:
+#      ./.github/workflows/delete-cloudformation-stack.yml` and passes
+#      `stack_name` plus the three AWS secrets below.
+#
+# AWS credentials come ONLY from GitHub Actions secrets — the same
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION secrets the
+# AWS-001 and AWS-Index-001 workflows use. Nothing is hard-coded,
+# and no AWS console sign-in is needed.
+#
+# Why this exists: CloudFormation refuses to update a stack in
+# ROLLBACK_COMPLETE state ("can not be updated"), so a failed
+# create-new VPC stack has to be deleted before AWS-001 can run
+# again. This workflow is that delete step, as a reusable action.
+on:
+  workflow_call:
+    inputs:
+      stack_name:
+        description: "CloudFormation stack to delete"
+        required: true
+        type: string
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_REGION:
+        required: true
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: "CloudFormation stack to delete (pick from the dropdown)"
+        required: true
+        type: choice
+        default: "rag-corpus-vpc"
+        options:
+          - rag-corpus-vpc
+          - rag-corpus-storage
+          - rag-corpus-compute
+          - rag-corpus-orchestration
+          - rag-corpus-indexing
+          - rag-corpus-index-orchestration
+
+permissions:
+  contents: read
+
+jobs:
+  delete-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Delete stack
+        run: |
+          STACK="${{ inputs.stack_name }}"
+          echo "Deleting CloudFormation stack $STACK ..."
+          aws cloudformation delete-stack --stack-name "$STACK"
+          echo "Waiting for stack deletion to complete ..."
+          aws cloudformation wait stack-delete-complete --stack-name "$STACK"
+          echo "Stack $STACK deleted."
