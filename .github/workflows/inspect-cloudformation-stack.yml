@@ -12,6 +12,11 @@ name: Inspect CloudFormation Stack (reusable + manual)
 #      rag-corpus-indexer/default/<task-id>) to dump that container's
 #      log events — the step that names the real error when a Step
 #      Functions execution fails at SubmitBatchWorkers.
+#   3. Batch job logs: pass job_queue + job_name (e.g. rag-corpus-queue
+#      + rag-corpus-worker) to find the latest job of that name and dump
+#      its log, when you don't know the log stream name.
+#   4. RDS logs: pass rds_instance (e.g. rag-corpus-index-db) to print
+#      the instance status/endpoint and the PostgreSQL log's FATAL lines.
 #   3. Reusable: another workflow calls it with `uses:
 #      ./.github/workflows/inspect-cloudformation-stack.yml` and passes
 #      `stack_name` plus the three AWS secrets below.
@@ -29,6 +34,21 @@ on:
         type: string
       log_stream:
         description: "CloudWatch log stream to dump, e.g. rag-corpus-indexer/default/<task-id>; blank = skip"
+        required: false
+        default: ""
+        type: string
+      job_queue:
+        description: "Batch job queue name, e.g. rag-corpus-queue (used with job_name to find a job's log)"
+        required: false
+        default: ""
+        type: string
+      job_name:
+        description: "Batch job name, e.g. rag-corpus-worker (used with job_queue to find a job's log)"
+        required: false
+        default: ""
+        type: string
+      rds_instance:
+        description: "RDS DB instance identifier, e.g. rag-corpus-index-db (dumps its PostgreSQL log)"
         required: false
         default: ""
         type: string
@@ -55,6 +75,21 @@ on:
           - rag-corpus-index-orchestration
       log_stream:
         description: "CloudWatch log stream to dump, e.g. rag-corpus-indexer/default/<task-id>; blank = skip"
+        required: false
+        default: ""
+        type: string
+      job_queue:
+        description: "Batch job queue name, e.g. rag-corpus-queue (used with job_name to find a job's log)"
+        required: false
+        default: ""
+        type: string
+      job_name:
+        description: "Batch job name, e.g. rag-corpus-worker (used with job_queue to find a job's log)"
+        required: false
+        default: ""
+        type: string
+      rds_instance:
+        description: "RDS DB instance identifier, e.g. rag-corpus-index-db (dumps its PostgreSQL log)"
         required: false
         default: ""
         type: string
@@ -130,3 +165,47 @@ jobs:
           aws logs describe-log-streams --log-group-name "$GROUP" --log-stream-name-prefix "$STREAM" --query 'logStreams[].{Stream:logStreamName,LastEvent:lastEventTimestamp}' --output table || echo "describe-log-streams: log group $GROUP not found or not readable."
           echo "== Log events (oldest first, up to 200) =="
           aws logs get-log-events --log-group-name "$GROUP" --log-stream-name "$STREAM" --limit 200 --start-from-head --query 'events[].message' --output text || echo "get-log-events failed for $STREAM - check the log group/stream names."
+
+      - name: Fetch a Batch job's log by queue and name (if given)
+        # Finds the most recent Batch job with the given name in the given
+        # queue, resolves its CloudWatch log stream, and dumps the events.
+        # Use it when you know which job ran but not the log stream name.
+        # Read-only.
+        if: ${{ inputs.job_name != '' && inputs.job_queue != '' }}
+        run: |
+          REGION="${{ secrets.AWS_REGION }}"
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          QARN="arn:aws:batch:${REGION}:${ACCOUNT}:job-queue/${{ inputs.job_queue }}"
+          echo "== Latest jobs named ${{ inputs.job_name }} in ${{ inputs.job_queue }} =="
+          for ST in SUCCEEDED FAILED; do
+            aws batch list-jobs --job-queue "$QARN" --job-status $ST --max-results 5 --query "jobSummaryList[?jobName=='${{ inputs.job_name }}'].{Id:jobId,Name:jobName,Status:status,Created:createdAt}" --output table || echo "list-jobs ($ST) failed."
+          done
+          JOBID=$(aws batch list-jobs --job-queue "$QARN" --job-status SUCCEEDED --max-results 10 --query "jobSummaryList[?jobName=='${{ inputs.job_name }}'].jobId | [0]" --output text)
+          if [ -z "$JOBID" ] || [ "$JOBID" = "None" ]; then
+            JOBID=$(aws batch list-jobs --job-queue "$QARN" --job-status FAILED --max-results 10 --query "jobSummaryList[?jobName=='${{ inputs.job_name }}'].jobId | [0]" --output text)
+          fi
+          if [ -z "$JOBID" ] || [ "$JOBID" = "None" ]; then echo "No job named ${{ inputs.job_name }} found in ${{ inputs.job_queue }}."; exit 0; fi
+          echo "== Latest job: $JOBID =="
+          STREAM=$(aws batch describe-jobs --jobs "$JOBID" --query "jobs[0].attempts[-1].container.logStreamName" --output text)
+          echo "Log stream: $STREAM"
+          aws logs get-log-events --log-group-name "/aws/batch/job" --log-stream-name "$STREAM" --limit 200 --start-from-head --query 'events[].message' --output text || echo "get-log-events failed for $STREAM."
+
+      - name: Fetch RDS PostgreSQL log (if an instance was given)
+        # Prints the RDS instance status/endpoint and the newest PostgreSQL
+        # log file's FATAL/ERROR lines — the step that says why the server
+        # is closing connections. Read-only.
+        if: ${{ inputs.rds_instance != '' }}
+        run: |
+          DB="${{ inputs.rds_instance }}"
+          echo "== RDS instance: $DB =="
+          aws rds describe-db-instances --db-instance-identifier "$DB" --query 'DBInstances[0].{Status:DBInstanceStatus,Engine:Engine,Version:EngineVersion,Endpoint:Endpoint.Address}' --output table || echo "describe-db-instances failed for $DB."
+          echo "== Newest log files =="
+          aws rds describe-db-log-files --db-instance-identifier "$DB" --max-records 5 --query 'DescribeDBLogFiles[].{Name:LogFileName,Size:Size,LastWritten:LastWritten}' --output table || echo "describe-db-log-files failed for $DB."
+          LOG=$(aws rds describe-db-log-files --db-instance-identifier "$DB" --max-records 1 --query 'DescribeDBLogFiles[0].LogFileName' --output text)
+          if [ -n "$LOG" ] && [ "$LOG" != "None" ]; then
+            echo "== FATAL/ERROR lines in $LOG =="
+            DATA=$(aws rds download-db-log-file-portion --db-instance-identifier "$DB" --log-file-name "$LOG" --starting-token 0 --max-items 500 --query 'LogFileData' --output text)
+            echo "$DATA" | grep -E "FATAL|ERROR|PANIC" | tail -60
+            echo "== Last 40 lines of $LOG =="
+            echo "$DATA" | tail -40
+          fi
