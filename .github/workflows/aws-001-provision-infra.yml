@@ -148,7 +148,18 @@ jobs:
             echo "Bucket $BUCKET does not exist — nothing to clean."
             exit 0
           fi
-          COUNT=$(aws s3api list-object-versions --bucket "$BUCKET" --query 'length(Versions || `[]`) + length(DeleteMarkers || `[]`)' --output text 2>/dev/null || echo "UNKNOWN")
+          # Emptiness check: `aws s3 ls --recursive` counts the objects
+          # currently in the bucket. The orphan was created by
+          # `aws s3 mb` with versioning never enabled, so a 0 count
+          # means truly empty — no hidden versions to worry about.
+          # NOTE: do NOT use a JMESPath expression with `+` here —
+          # JMESPath has no arithmetic operators, so
+          # `length(Versions)+length(DeleteMarkers)` is invalid and
+          # fails the count (that is exactly what broke run #4).
+          # Errors from this call are NOT suppressed, so a failure
+          # shows its real reason in the log instead of UNKNOWN.
+          COUNT=$(aws s3 ls "s3://$BUCKET" --recursive | wc -l)
+          echo "Object count in $BUCKET: $COUNT"
           if [ "$COUNT" = "0" ]; then
             echo "Orphan empty bucket $BUCKET found (storage stack status: $STATUS) — deleting it so the storage stack can create it."
             aws s3api delete-bucket --bucket "$BUCKET"
