@@ -14,6 +14,9 @@ Behaviour:
   - Uploads each file to S3, partitioned yyyy/mm/dd by loan start date:
     s3://<BUCKET>/raw/<format>/year=2024/month=03/day=12/loan_<idx>_<loan_id>.<ext>
   - Upserts manifest rows to DynamoDB (doc_id = "<format>_<idx>").
+  - Claims each record's natural hash in the dedup table before
+    uploading (F019); a hash already claimed means a duplicate loan,
+    and its files are skipped entirely.
   - Writes a shard manifest to S3:  s3://<BUCKET>/manifests/<run_id>/<shard_id>.jsonl
   - Writes a completion marker:   s3://<BUCKET>/markers/<run_id>/<shard_id>.done
     (Step Functions checks markers; a shard with a marker is skipped on replay.)
@@ -21,6 +24,9 @@ Behaviour:
     Any exception -> message stays visible, SQS redrives it, then DLQ.
 
 Env: CORPUS_BUCKET, MANIFEST_TABLE, QUEUE_URL, AWS_REGION
+Optional: DEDUP_TABLE (dedup table name; claiming is skipped when unset,
+so existing deployments without it keep working — add it to the Batch
+job definition env to enable F019 dedup, see DESIGN.md §6).
 Requires: boto3. Generator itself has no external deps.
 Shared bottom layer: this worker is format-agnostic. The only thing that
 changes per document type is msg["formats"] = ["pdf"] (or ["docx"], …).
@@ -41,9 +47,11 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from generator.generator import make_record, answer_for, WRITERS  # noqa: E402
+from dedup.natural_hash import claim_natural_hash  # noqa: E402
 
 BUCKET = os.environ["CORPUS_BUCKET"]
 TABLE = os.environ["MANIFEST_TABLE"]
+DEDUP_TABLE_NAME = os.environ.get("DEDUP_TABLE")
 QUEUE_URL = os.environ["QUEUE_URL"]
 REGION = os.environ.get("AWS_REGION", "ap-south-1")
 
@@ -52,6 +60,7 @@ s3 = boto3.client("s3", region_name=REGION, config=RETRY)
 sqs = boto3.client("sqs", region_name=REGION, config=RETRY)
 ddb = boto3.resource("dynamodb", region_name=REGION, config=RETRY)
 table = ddb.Table(TABLE)
+dedup_table = ddb.Table(DEDUP_TABLE_NAME) if DEDUP_TABLE_NAME else None
 
 
 def _upload_bytes(key: str, data: bytes, content_type: str) -> None:
@@ -85,11 +94,27 @@ def process_shard(msg: dict) -> int:
 
     manifest_lines = []
     written = 0
+    skipped = 0
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         for idx in range(msg["start"], msg["start"] + msg["count"]):
             rec = make_record(rng, idx, year=msg.get("year"))
+            if dedup_table is not None and msg["formats"]:
+                # F019: claim the natural hash ONCE per record, before any
+                # format is written. The hash identifies the loan content,
+                # not one file, so all formats of a duplicate are skipped
+                # together. A crash between claim and upload leaves the
+                # hash claimed with no file — the generator samples unique
+                # tuples without replacement, so a re-run with a fresh
+                # seed does not re-emit the same content (DESIGN.md §6).
+                if not claim_natural_hash(
+                        dedup_table, rec["natural_hash"],
+                        f"{msg['formats'][0]}_{idx:07d}", rec["loan_id"]):
+                    print(f"Skipped duplicate {rec['loan_id']} "
+                          f"hash {rec['natural_hash']}")
+                    skipped += len(msg["formats"])
+                    continue
             ans = answer_for(rec)
             for fmt in msg["formats"]:
                 ext, writer = WRITERS[fmt]
@@ -116,7 +141,7 @@ def process_shard(msg: dict) -> int:
     s3.put_object(Bucket=BUCKET, Key=marker,
                   Body=json.dumps({"shard_id": shard_id, "files": written}).encode(),
                   ContentType="application/json")
-    print(f"Shard {shard_id} done: {written} files.")
+    print(f"Shard {shard_id} done: {written} files, {skipped} duplicate(s) skipped.")
     return written
 
 
