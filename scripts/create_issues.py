@@ -190,6 +190,11 @@ EPIC_LABELS = {
     "E012": ["pgvector", "opensearch", "hybrid-search"],
     "E013": ["aws", "index-wf", "github-actions", "batch", "lambda", "step-functions", "sqs"],
     "E014": ["observability", "cloudwatch", "testing", "docs"],
+    "E015": ["local-dev", "docker", "docker-compose", "postgres", "redis", "elk", "rabbitmq"],
+    "E016": ["local-dev", "package-json", "uv"],
+    "E017": ["api-services", "entitlements", "fastapi"],
+    "E018": ["microservices", "local-dev", "package-json", "portals"],
+    "E019": ["microservices", "docker", "ecr", "github-actions"],
 }
 FEATURE_LABELS = {
     "F001": ["generator"], "F002": ["generator"], "F003": ["generator"],
@@ -217,6 +222,12 @@ FEATURE_LABELS = {
     "F041": ["lambda", "sqs"], "F042": ["batch", "sqs"],
     "F043": ["index-wf", "github-actions"], "F044": ["aws", "observability"],
     "F045": ["testing", "observability"], "F046": ["docs", "testing"],
+    "F047": ["postgres", "docker-compose", "local-dev"], "F048": ["redis", "docker-compose", "local-dev"], "F049": ["elk", "docker-compose", "local-dev"],
+    "F050": ["rabbitmq", "docker-compose", "local-dev"], "F051": ["docker", "local-dev"], "F052": ["package-json", "local-dev"],
+    "F053": ["uv"], "F054": ["api-services", "entitlements", "fastapi"], "F055": ["entitlements", "postgres", "migrations", "alembic"],
+    "F056": ["api-services", "entitlements", "fastapi"], "F057": ["api-services", "entitlements", "fastapi"], "F058": ["entitlements", "fastapi", "migrations"],
+    "F059": ["microservices", "local-dev"], "F060": ["package-json", "microservices", "portals"], "F061": ["portals", "local-dev"],
+    "F062": ["docker", "github-actions"], "F063": ["docker", "ecr", "github-actions"], "F064": ["docker", "microservices", "github-actions"],
 }
 LABEL_COLORS = {
     "epic": "5319e7", "feature": "0e8a16", "story": "fbca04",
@@ -234,6 +245,12 @@ LABEL_COLORS = {
     "embeddings": "5319e7", "data-indexing": "0e8a16", "index-wf": "0e8a16",
     "rds": "4053d6", "chunking": "c2e0c6", "metadata": "bfdadc",
     "hybrid-search": "1d76db",
+    "api-services": "5319e7", "entitlements": "1d76db", "fastapi": "009688",
+    "local-dev": "0e8a16", "docker": "1d76db", "docker-compose": "1d76db",
+    "postgres": "4053d6", "redis": "d73a4a", "elk": "fbca04",
+    "rabbitmq": "ff4f8b", "uv": "5319e7", "migrations": "bfdadc",
+    "alembic": "bfdadc", "package-json": "0075ca", "microservices": "7f3fbf",
+    "portals": "0e8a16",
 }
 
 # --- Existing state (idempotency) -------------------------------------------
