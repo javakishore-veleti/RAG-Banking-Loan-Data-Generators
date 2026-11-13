@@ -99,19 +99,36 @@ recorded here explicitly.
 - **Example question:** "What is the interest rate for a business
   loan?" — answered from that loan's record.
 
-### 3.2 Policy documents (not generated here — yet)
+### 3.2 Policy documents (built — F018)
 
 - **One document = one rule** that applies to thousands of loans:
   rate policy, eligibility rules, prepayment rules, MITC, effective
   dates, versioned over time.
-- **Volume:** tens to hundreds, not millions. 200,000 copies of the
-  same policy would be duplicate content that drowns retrieval.
+- **Volume:** tens to hundreds, not millions — 66 documents today
+  (2 versions × 7 loan types). See below for why the volume is small.
 - **Relationship:** a customer record *references* a policy version
   (e.g. `policy_version: home-v2024-01`). The RAG system needs both
   corpora to answer "what is the rate?" (customer record) and "what
   is the policy?" (policy document).
-- **Future work:** a separate, small, versioned policy generator.
-  See §14.
+- **Generator:** `Middleware/Workflows/Datagen/src/policy/policy_generator.py`
+  (dependency-free, deterministic, fixed set). Rule text comes from
+  the F016 seeds (`data/seeds/terminology.yaml`); every rule carries
+  the seed IDs it traces to, and a rule that cannot be traced is
+  omitted, not invented. The version table is in
+  `src/policy/versions.py` and is shared with the customer
+  generator, which stamps each record with the version in force.
+  Manifest: `data/policies/POLICIES.md`; generated docs land under
+  `policy/<loan_type>/version=<version>/` with a `manifest.jsonl`
+  (`record_kind: policy`).
+- **Why policy docs are NOT generated at 200k/year:** one rule
+  applies to thousands of loans, so 200,000 copies of the same rule
+  would be 200,000 duplicate documents. Duplicates drown retrieval:
+  a query about the rate would return thousands of identical policy
+  copies instead of the one rule and the relevant loan records.
+  Policy documents are versioned instead — when a rule changes, a
+  new version is added (tens of documents total) and customer
+  records point at the version in force. The two corpora answer
+  different questions, and the RAG system needs both.
 
 ### 3.3 Loan types and ranges
 
@@ -517,11 +534,11 @@ verification steps, not unit tests.
   purposes) and questions to `QUESTIONS`. Re-run uniqueness.
 - **New question topic:** add a topic to `QUESTIONS` and four
   paraphrase variants in `answer_for`. Re-run uniqueness.
-- **Policy corpus:** new generator module (`Middleware/Workflows/Datagen/src/policy/`), new
-  S3 prefix `policy/<loan_type>/version=…/`, new DynamoDB table or
-  the same manifest with `record_kind: policy`. Do not reuse the
-  customer record generator for policies — the volume and versioning
-  are different.
+- **Policy corpus:** built (F018) — generator module
+  (`Middleware/Workflows/Datagen/src/policy/`), S3 prefix
+  `policy/<loan_type>/version=…/`, manifest with `record_kind: policy`
+  (see §3.2). Do not reuse the customer record generator for
+  policies — the volume and versioning are different.
 - **MinHash dedup at scale:** replace the pairwise check in the
   worker with MinHash signatures stored in the dedup table, and
   claim via the hash. Keep the exact-hash claim as a fallback.
@@ -537,7 +554,9 @@ verification steps, not unit tests.
 1. **What is the business natural key?** The dedup design (§6)
    needs the unique field set named. Candidates are listed there;
    the repo owner needs to confirm one.
-2. **Policy corpus:** design the versioned policy generator (§3.2).
+2. **Policy corpus:** DONE (F018) — versioned policy generator built
+   (`src/policy/`), see §3.2. Remaining: the AWS upload wiring for
+   the `policy/` prefix (planner/worker), noted in HANDOVER.md.
 3. **Embedding-based uniqueness:** add cosine similarity as a
    second uniqueness check, alongside 5-gram Jaccard.
 4. **Cost measurement:** measure one 10k shard (time, vCPU-hours,
