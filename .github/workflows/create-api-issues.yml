@@ -1,0 +1,39 @@
+name: Create API Issues (manual)
+
+# One manual run creates all milestones + issues from
+# GITHUB_ISSUES_API_SERVICES.md (3 milestones, 5 epics, 18 features,
+# 45 stories = 68 issues, M008–M010, E015–E019, F047–F064,
+# S121–S165) plus the new API Services labels (api-services,
+# entitlements, fastapi, local-dev, docker, docker-compose, postgres,
+# redis, elk, rabbitmq, uv, migrations, alembic, package-json,
+# microservices, portals).
+# This exists because creating 68 issues via the Muse GitHub
+# connector needs a fresh approval per issue. This workflow uses the
+# repo's own GITHUB_TOKEN, so one manual run does the whole set.
+# It is idempotent: re-running it skips issues that already exist
+# and PATCHes their labels + milestone.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-api-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Create milestones, labels, epics, features, stories
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PLAN_FILE: GITHUB_ISSUES_API_SERVICES.md
+          EXPECTED_MILESTONES: "3"
+          EXPECTED_EPICS: "5"
+          EXPECTED_FEATURES: "18"
+          EXPECTED_STORIES: "45"
+          PLAN_SCOPE: "API Services & local development platform. No LangChain / Strands agents yet."
+        run: python3 scripts/create_issues.py
