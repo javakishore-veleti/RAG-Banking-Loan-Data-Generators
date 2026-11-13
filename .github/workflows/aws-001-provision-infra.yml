@@ -11,18 +11,19 @@ name: AWS-001 Provision Infra (manual)
 # missing the run fails at the first step with a message naming it.
 #
 # VPC — pick one when you run it (vpc_mode):
-#   create-new (default): deploys infra/cloudformation/vpc.yaml
+#   default-vpc (default): uses your AWS account's default VPC.
+#     The workflow finds it by itself (default VPC + its subnets +
+#     its default security group) — you configure nothing, no VPC,
+#     subnet or security group secrets needed. The default VPC has
+#     public subnets + an internet gateway, so there is NO NAT
+#     gateway to pay for. No $PROJECT-vpc stack is created, so
+#     AWS-010 has no VPC stack to delete.
+#   create-new: deploys infra/cloudformation/vpc.yaml
 #     first ($PROJECT-vpc stack: VPC + 2 private subnets + NAT
 #     gateway + security group) and uses its outputs. You configure
 #     nothing — no VPC, subnet or security group secrets needed.
 #     NOTE: the NAT gateway costs ~$32/month + data while the stack
 #     exists; AWS-010 Destroy Infra deletes it.
-#   use-existing: VPC/subnets/SG come from the
-#     VPC_ID / SUBNET_IDS / SECURITY_GROUP_IDS secrets, or from the
-#     vpc_id / subnet_ids / security_group_ids run inputs below
-#     (inputs win over secrets). Only pick this if you already have
-#     a VPC you want to reuse. Missing values fail the run with a
-#     message saying which secret or input to set.
 #
 # ORDER MATTERS: the storage stack must deploy BEFORE the Planner
 # Lambda is packaged, because packaging uploads planner.zip into the
@@ -50,25 +51,13 @@ on:
         required: false
         default: "64"
       vpc_mode:
-        description: "VPC source: create-new (default, deploy vpc.yaml — nothing to configure) or use-existing (secrets/inputs)"
+        description: "VPC source: default-vpc (account default VPC — nothing to configure) or create-new (deploy vpc.yaml, NAT ~$32/mo)"
         required: true
         type: choice
-        default: "create-new"
+        default: "default-vpc"
         options:
-          - use-existing
+          - default-vpc
           - create-new
-      vpc_id:
-        description: "Optional: existing VPC id (overrides VPC_ID secret; leave blank to use the secret)"
-        required: false
-        default: ""
-      subnet_ids:
-        description: "Optional: comma-separated subnet ids (overrides SUBNET_IDS secret; leave blank to use the secret)"
-        required: false
-        default: ""
-      security_group_ids:
-        description: "Optional: comma-separated security group ids (overrides SECURITY_GROUP_IDS secret; leave blank to use the secret)"
-        required: false
-        default: ""
 
 permissions:
   contents: read
@@ -101,7 +90,7 @@ jobs:
           fi
           echo "AWS secrets present (values not shown). VPC mode: ${{ inputs.vpc_mode }}"
 
-      - name: Resolve VPC (use-existing) or create a new one
+      - name: Resolve VPC (default VPC) or create a new one
         run: |
           if [ "${{ inputs.vpc_mode }}" = "create-new" ]; then
             echo "Creating new VPC stack $PROJECT-vpc ..."
@@ -113,13 +102,19 @@ jobs:
             SUBNET_IDS=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`SubnetIds`].OutputValue' --output text)
             SECURITY_GROUP_IDS=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`SecurityGroupId`].OutputValue' --output text)
           else
-            # Run inputs win over secrets; blank input means "use the secret".
-            VPC_ID="${{ inputs.vpc_id || secrets.VPC_ID }}"
-            SUBNET_IDS="${{ inputs.subnet_ids || secrets.SUBNET_IDS }}"
-            SECURITY_GROUP_IDS="${{ inputs.security_group_ids || secrets.SECURITY_GROUP_IDS }}"
+            # default-vpc: find the account's default VPC, its subnets
+            # and its default security group — nothing to configure.
+            echo "Using the account default VPC ..."
+            VPC_ID=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
+            if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+              echo "::error::No default VPC found in this account/region. Re-run with vpc_mode=create-new."
+              exit 1
+            fi
+            SUBNET_IDS=$(aws ec2 describe-subnets --filters Name=vpc-id,Values=$VPC_ID --query 'join(`,`, Subnets[].SubnetId)' --output text)
+            SECURITY_GROUP_IDS=$(aws ec2 describe-security-groups --filters Name=vpc-id,Values=$VPC_ID Name=group-name,Values=default --query 'SecurityGroups[0].GroupId' --output text)
           fi
           if [ -z "$VPC_ID" ] || [ -z "$SUBNET_IDS" ] || [ -z "$SECURITY_GROUP_IDS" ]; then
-            echo "::error::VPC not resolved (mode=${{ inputs.vpc_mode }}). Set the VPC_ID / SUBNET_IDS / SECURITY_GROUP_IDS secrets, pass vpc_id / subnet_ids / security_group_ids inputs, or re-run with vpc_mode=create-new."
+            echo "::error::VPC not resolved (mode=${{ inputs.vpc_mode }}). Re-run with vpc_mode=default-vpc (uses the account default VPC) or vpc_mode=create-new."
             exit 1
           fi
           echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
