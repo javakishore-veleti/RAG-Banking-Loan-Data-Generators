@@ -113,8 +113,8 @@ def api(method, path, payload=None):
 
 def main():
     assert len(CLOSE) == 69, f"expected 69 issues to close, got {len(CLOSE)}"
-  closed = skipped = failed = 0
-for issue_id, number, group in CLOSE:
+    closed = skipped = failed = 0
+    for issue_id, number, group in CLOSE:
         try:
             _, issue = api("GET", f"/issues/{number}")
             title = issue.get("title", "")
