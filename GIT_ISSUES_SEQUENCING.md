@@ -124,7 +124,7 @@ with Q&A. Exit criteria: 10 records × 6 formats verified; manifest complete.
 2. S026 #47 ✅ One run = one format + one year (200k/year target).
 ## M003: Uniqueness and Realism
 
-Status: **Open — 16 open, 20 closed (36 total)**. Goal: descriptions are
+Status: **Open — 12 open, 24 closed (36 total)**. Goal: descriptions are
 unique enough for RAG; seeded from real artifacts. Exit criteria:
 wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 
@@ -161,11 +161,11 @@ wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 1. S039 #65 ✅ Amounts use log-uniform (clustered) ranges per loan type, not uniform random.
 2. S040 #66 ✅ Rates, tenures, and credit scores use realistic ranges per loan type.
 
-#### F018 #67 ⬜ Policy corpus (small, versioned)
+#### F018 #67 ✅ Policy corpus (small, versioned)
 
-1. S041 #68 ⬜ Design a separate, small policy corpus (tens of docs, versioned by effective date).
-2. S042 #69 ⬜ Customer records reference a policy version (e.g. home-v2024-01).
-3. S043 #70 ⬜ Policy docs are *not* generated at 200k/year — document why in DESIGN.md.
+1. S041 #68 ✅ Design a separate, small policy corpus (tens of docs, versioned by effective date).
+2. S042 #69 ✅ Customer records reference a policy version (e.g. home-v2024-01).
+3. S043 #70 ✅ Policy docs are *not* generated at 200k/year — document why in DESIGN.md.
 
 ### E006 #6 ⬜ Deduplication
 
