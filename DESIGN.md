@@ -292,10 +292,13 @@ two records can have identical unique fields and different `doc_id`s.
 **Design:**
 
 1. **Define the unique field set first** (a business decision, not
-   a technical one). Example candidates:
-   - `(customer_id, loan_type, start_date)`
-   - `(loan_account_number)` alone
-   - Full content: `(customer, loan_type, amount, rate, tenure, start_date)`
+   a technical one). **DECIDED 2026-11-12 by the repo owner (F019):**
+   full content —
+   `(customer, loan_type, amount, rate, tenure, start_date)`.
+   ("customer" is the customer name, stored as `name` in generator
+   records.) The other candidates considered were
+   `(customer_id, loan_type, start_date)` and `(loan_account_number)`
+   alone.
 2. **Normalise** the fields (lowercase, trim, round amounts/rates,
    format dates identically).
 3. **Hash:** `natural_hash = SHA256(normalised fields joined by |)`.
@@ -305,7 +308,10 @@ two records can have identical unique fields and different `doc_id`s.
    The first writer wins; the second gets a conditional-check
    failure and skips the file.
 5. **S3 key includes the hash** (or the natural key), so identical
-   content lands on the identical object.
+   content lands on the identical object. *Not built in F019:* the
+   atomic claim in step 4 is the guard, so S3 keys are unchanged for
+   now — a duplicate is skipped before upload instead of landing on
+   the same object.
 
 **What does not work:**
 
@@ -551,9 +557,13 @@ verification steps, not unit tests.
 
 ## 14. Open questions and future work
 
-1. **What is the business natural key?** The dedup design (§6)
-   needs the unique field set named. Candidates are listed there;
-   the repo owner needs to confirm one.
+1. **What is the business natural key?** DECIDED 2026-11-12 by the
+   repo owner (F019): full content —
+   `(customer, loan_type, amount, rate, tenure, start_date)`.
+   Implemented in `src/dedup/natural_hash.py`, wired into the
+   generator (`natural_hash` on every record and manifest row) and
+   the worker (atomic claim in the dedup table; duplicates skipped
+   before upload).
 2. **Policy corpus:** DONE (F018) — versioned policy generator built
    (`src/policy/`), see §3.2. Remaining: the AWS upload wiring for
    the `policy/` prefix (planner/worker), noted in HANDOVER.md.
