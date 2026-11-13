@@ -96,6 +96,39 @@ To regenerate: `python3 src/policy/policy_generator.py --out ./policy-corpus`.
 Policy docs are generated once, locally — the AWS upload wiring for
 the `policy/` prefix is still to be done (see HANDOVER.md).
 
+## Natural-hash dedup (F019)
+
+Two records can carry identical business fields under different IDs,
+and a surrogate PK (`doc_id`) cannot stop that. F019 adds an exact
+duplicate guard:
+
+- **Natural key (decided 2026-11-12 by the repo owner):** the full
+  content — `(customer, loan_type, amount, rate, tenure, start_date)`.
+  ("customer" is the customer name, stored as `name` in records.)
+- **Hash:** `src/dedup/natural_hash.py` normalises the key fields
+  (lowercase + trim, amounts to whole rupees, rates to 2 decimals,
+  dates to ISO `YYYY-MM-DD`) and hashes them:
+  `natural_hash = SHA256(fields joined by "|")`, 64-char lowercase hex.
+  Every record from `make_record` carries `natural_hash`, and the
+  generator's `manifest.jsonl` rows carry it too.
+- **Claim:** before uploading, the Batch worker claims the hash in
+  the DynamoDB dedup table (`<project>-dedup`, PK `natural_hash`)
+  with `PutItem` + `ConditionExpression:
+  attribute_not_exists(natural_hash)`. The first writer wins.
+- **On conflict:** the record is a duplicate — the worker skips all
+  of its files (no S3 upload, no manifest row) and logs
+  `Skipped duplicate <loan_id> hash <hash>`. The table name comes
+  from the `DEDUP_TABLE` env var; when it is unset, claiming is
+  skipped so existing deployments keep working (add the var to the
+  Batch job definition env to enable dedup).
+- **What is NOT done:** S3 keys do not include the hash (DESIGN.md
+  §6 step 5) — the atomic claim is the guard, so keys are unchanged.
+  F020 (per-shard `.done` markers, deterministic keys) and F021
+  (post-run duplicate audits) are still open.
+- `tests/test_natural_hash.py` checks normalisation variants hash
+  identically, different key fields hash differently, the claim lets
+  the first writer win, and generator hashes are deterministic.
+
 ## Deployments
 
 See `deployments/README.md`. In short: the image is built from
