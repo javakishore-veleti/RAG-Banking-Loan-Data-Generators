@@ -182,6 +182,27 @@ def load_terminology(path=None):
 TERMINOLOGY = load_terminology()
 
 
+# ---------------------------------------------------------------- policy versions (F018)
+# The policy corpus (src/policy/) owns the version table; the customer
+# generator only needs the mapping (loan_type, year) -> policy version
+# so each record references the policy in force for its start year.
+# Import it when the policy module is on the path (Batch worker, tests);
+# fall back to the same year-clamp rule when generator.py runs
+# standalone without src/policy/ alongside it.
+try:
+    from policy.versions import policy_version_for as _policy_version_for
+except ImportError:  # standalone copy of generator.py
+    _policy_version_for = None
+
+
+def policy_version_for_record(loan_type, year):
+    """Policy version in force for a loan of this type in this year."""
+    if _policy_version_for is not None:
+        return _policy_version_for(loan_type, year)
+    y = min(max(int(year), 2023), 2024)
+    return f"{loan_type}-v{y}-01"
+
+
 def _seed_texts(entries):
     """Pull the plain `text` out of a terminology list (dicts or strings)."""
     out = []
@@ -310,6 +331,9 @@ def make_record(rng, i, year=None):
         start = date(int(year), 1, 1) + timedelta(days=rng.randint(0, 364))
     else:
         start = date(2023, 1, 1) + timedelta(days=rng.randint(0, 900))
+    # F018: the policy version in force for this loan type in the
+    # record's start year (e.g. a 2024 home loan -> home-v2024-01).
+    policy_version = policy_version_for_record(key, start.year)
     # F016: per-record seed picks (rng-driven, so determinism holds).
     # Distinct picks from each pool keep records from sharing wording.
     seed_terms = []
@@ -340,6 +364,8 @@ def make_record(rng, i, year=None):
         "start_date": start.isoformat(),
         "question": q, "topic": topic,
         "credit_score": rng.randint(650, 850),
+        # F018: policy version in force for this loan type + start year.
+        "policy_version": policy_version,
         # F016: longest tenure offered for this product, from the seeded
         # tenures when loaded (so the tenure answer matches the draw).
         "max_tenure": max(tenures),
@@ -494,9 +520,13 @@ def lines_for(rec):
         f"Channel: {rec['channel']}",
         _context_line(rec),
     ]
+    # F018: policy version in force (index 15). Records built before
+    # F018 have no such field; guard so lines_for stays total.
+    if rec.get("policy_version"):
+        fields.append(f"Policy Version: {rec['policy_version']}")
     # F016: the record's seed terms, so every document carries real
     # terminology from the seeds. Appended after `fields` so the layout-2
-    # reorder above (fields[0..14]) is unaffected.
+    # reorder above (fields[0..15]) is unaffected.
     seed_line = []
     if rec.get("seed_terms"):
         seed_line = [f"Key terms: {', '.join(rec['seed_terms'])}."]
@@ -505,10 +535,11 @@ def lines_for(rec):
         return [f"Question: {rec['question']}", f"Answer: {a}", ""] + fields + seed_line + [
             "", "Note: This is a synthetic document generated for RAG testing. All names and IDs are fictional."]
     if layout == 2:
-        # Status-first layout, fields in a different order.
-        reordered = [fields[0], fields[10], fields[11], fields[1], fields[2],
-                     fields[5], fields[6], fields[7], fields[8], fields[3],
-                     fields[4], fields[9], fields[12], fields[13], fields[14]]
+        # Status-first layout, fields in a different order. Index 15 is
+        # the F018 policy-version line; it is skipped for records that
+        # predate it (fields then has only 15 entries).
+        order = [0, 10, 11, 1, 2, 5, 6, 7, 8, 3, 4, 9, 12, 13, 14, 15]
+        reordered = [fields[i] for i in order if i < len(fields)]
         return reordered + seed_line + ["", f"Question: {rec['question']}", f"Answer: {a}",
                             "", "Note: This is a synthetic document generated for RAG testing. All names and IDs are fictional."]
     return fields + seed_line + ["", f"Question: {rec['question']}", f"Answer: {a}",
@@ -517,8 +548,12 @@ def lines_for(rec):
 
 # ---------------------------------------------------------------- writers
 
-def write_txt(path, rec):
-    path.write_text("\n".join(lines_for(rec)) + "\n", encoding="utf-8")
+def write_txt(path, rec, lines=None):
+    # F018: `lines` lets the policy generator reuse this writer for
+    # rule-shaped documents (rec is None there).
+    if lines is None:
+        lines = lines_for(rec)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def write_csv(path, rec):
@@ -538,10 +573,13 @@ def _xml_escape(s):
             .replace(">", "&gt;").replace('"', "&quot;"))
 
 
-def write_docx(path, rec):
+def write_docx(path, rec, lines=None):
+    # F018: `lines` override, see write_txt.
+    if lines is None:
+        lines = lines_for(rec)
     paras = "".join(
         f"<w:p><w:r><w:t xml:space=\"preserve\">{_xml_escape(line)}</w:t></w:r></w:p>"
-        for line in lines_for(rec))
+        for line in lines)
     doc = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
            f"<w:body>{paras}</w:body></w:document>")
@@ -632,8 +670,10 @@ def _pdf_escape(s):
     return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
 
-def write_pdf(path, rec):
-    lines = lines_for(rec)
+def write_pdf(path, rec, lines=None):
+    # F018: `lines` override, see write_txt.
+    if lines is None:
+        lines = lines_for(rec)
     content = ["BT /F1 11 Tf 50 780 Td"]
     y = 780
     for line in lines:
@@ -671,7 +711,13 @@ def write_pdf(path, rec):
     path.write_bytes(bytes(out))
 
 
-def write_png(path, rec):
+def write_png(path, rec, lines=None, title=None):
+    # F018: `lines`/`title` override lets the policy generator reuse
+    # this writer (rec is None there, so no question line is drawn).
+    if lines is None:
+        lines = lines_for(rec)
+    if title is None:
+        title = f"{rec['loan_type']} — Loan Summary"
     try:
         from PIL import Image, ImageDraw
     except ImportError:
@@ -690,12 +736,13 @@ def write_png(path, rec):
     img = Image.new("RGB", (900, 560), "white")
     d = ImageDraw.Draw(img)
     d.rectangle([0, 0, 900, 70], fill=(18, 60, 110))
-    d.text((30, 22), f"{rec['loan_type']} — Loan Summary", fill="white")
+    d.text((30, 22), title, fill="white")
     y = 100
-    for line in lines_for(rec)[1:14]:
+    for line in lines[1:14]:
         d.text((30, y), line, fill=(20, 20, 20))
         y += 30
-    d.text((30, y + 10), f"Q: {rec['question']}", fill=(18, 60, 110))
+    if rec is not None:
+        d.text((30, y + 10), f"Q: {rec['question']}", fill=(18, 60, 110))
     img.save(path, "PNG")
 
 
@@ -785,6 +832,7 @@ def main():
                     "loan_id": rec["loan_id"], "loan_type": rec["loan_type"],
                     "channel": rec["channel"], "question": rec["question"],
                     "answer": ans,
+                    "policy_version": rec["policy_version"],
                 }) + "\n")
             if (idx - args.start + 1) % 1000 == 0:
                 print(f"  ... {idx - args.start + 1}/{args.count} records done", flush=True)
