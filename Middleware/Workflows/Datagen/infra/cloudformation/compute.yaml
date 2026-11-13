@@ -123,6 +123,8 @@ Resources:
             Value: !Sub "${Project}-corpus-${AWS::AccountId}"
           - Name: MANIFEST_TABLE
             Value: !Sub "${Project}-manifest"
+          - Name: DEDUP_TABLE
+            Value: !Sub "${Project}-dedup"
           - Name: QUEUE_URL
             Value:
               Fn::ImportValue: !Sub "${Project}-QueueUrl"
