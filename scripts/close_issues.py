@@ -49,6 +49,7 @@ EVIDENCE = {
     "uniqueness": "Verified done: uniqueness_check.py (wording-only 5-gram Jaccard) + uniqueness_report.md; v2 wording-only mean 0.128, same-type pairs >0.5 down to 1.5% on 200 records; --max-overlap 0.65 reject/regenerate loop.",
     "realism": "Verified done: log-uniform amounts and realistic rate / tenure / credit-score ranges per loan type in src/generator/generator.py.",
     "f016": "Verified done: real-artifact seeding — data/seeds/SEEDS.md (21 fetched public artifacts), data/seeds/terminology.yaml (551 lines, sourced rates/checklists/terms per loan type), generator.py loads it at runtime and picks seed terms/documents/fees per record, Dockerfile copies data/seeds/ into the worker image; 11/11 tests pass, uniqueness wording-only mean 0.109. F016 complete.",
+    "f018": "Verified done: policy corpus — src/policy/policy_generator.py (66 policy documents, 2 versions x 7 loan types, all 6 formats) under policy/<loan_type>/version=<version>/ plus policy/manifest.jsonl (record_kind: policy); src/policy/versions.py version table (v2023-01, v2024-01 latest) shared with the customer generator, every customer record carries policy_version in its description and manifest.jsonl; data/policies/POLICIES.md manifest with the seed ID each rule traces to; Datagen README + root DESIGN.md sections 3.2/13/14 updated; 20/20 tests pass, uniqueness wording-only mean 0.106. F018 complete. Caveat: both versions carry identical rule text (only one fetch snapshot exists — no historical figures invented).",
 }
 
 # (issue id, GitHub issue number, evidence group)
@@ -86,6 +87,8 @@ CLOSE = (
        ("S040", 66, "realism")]
     + [("F016", 60, "f016"), ("S036", 61, "f016"),
        ("S037", 62, "f016"), ("S038", 63, "f016")]
+    + [("F018", 67, "f018"), ("S041", 68, "f018"),
+       ("S042", 69, "f018"), ("S043", 70, "f018")]
 )
 
 
@@ -106,7 +109,7 @@ def api(method, path, payload=None):
 
 
 def main():
-    assert len(CLOSE) == 61, f"expected 61 issues to close, got {len(CLOSE)}"
+    assert len(CLOSE) == 65, f"expected 65 issues to close, got {len(CLOSE)}"
     closed = skipped = failed = 0
     for issue_id, number, group in CLOSE:
         try:
