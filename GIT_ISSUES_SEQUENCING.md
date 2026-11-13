@@ -124,7 +124,7 @@ with Q&A. Exit criteria: 10 records × 6 formats verified; manifest complete.
 2. S026 #47 ✅ One run = one format + one year (200k/year target).
 ## M003: Uniqueness and Realism
 
-Status: **Open — 12 open, 24 closed (36 total)**. Goal: descriptions are
+Status: **Open — 8 open, 28 closed (36 total)**. Goal: descriptions are
 unique enough for RAG; seeded from real artifacts. Exit criteria:
 wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 
@@ -175,11 +175,11 @@ key and hash here in M003, F020's markers only get exercised when runs
 execute in AWS (M004), and the F021 audit only passes at scale (M005).
 See HANDOVER.md §2 for the full explanation.
 
-#### F019 #71 ⬜ Natural-hash dedup
+#### F019 #71 ✅ Natural-hash dedup
 
-1. S044 #72 ⬜ Define the business natural key (confirm the unique field set with the owner).
-2. S045 #73 ⬜ Compute natural_hash = SHA256(normalised unique fields) in the generator/worker.
-3. S046 #74 ⬜ Claim the hash atomically in the dedup table (attribute_not_exists); skip on conflict.
+1. S044 #72 ✅ Define the business natural key (confirm the unique field set with the owner).
+2. S045 #73 ✅ Compute natural_hash = SHA256(normalised unique fields) in the generator/worker.
+3. S046 #74 ✅ Claim the hash atomically in the dedup table (attribute_not_exists); skip on conflict.
 
 #### F020 #75 ⬜ Shard marker and idempotency
 
