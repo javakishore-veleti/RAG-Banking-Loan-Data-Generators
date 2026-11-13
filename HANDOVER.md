@@ -43,6 +43,7 @@ Work runs milestone by milestone, in this order. Do not start the next
 milestone until the previous one's exit criteria pass.
 
 | Milestone | Name | Status | What runs here | What gates the next one |
+|---|---|---|---|---|
 | M001 | Foundation & Local Generator | CLOSED (12/12) | Generator core, data model | — |
 | M002 | Six Formats & Ground Truth | CLOSED (29/29) | All 6 format writers, manifest | — |
 | M003 | Uniqueness & Realism | Open (7 open / 29 closed) | Uniqueness control (F013–F015, done), realism + real-artifact seeding (F016–F018, done), dedup hash (F019, done), dedup markers + audit (F020–F021, open) | Wording-only mean ≤ 0.15, same-type >0.5 ≤ 5% on 200 records; dedup audit clean |
