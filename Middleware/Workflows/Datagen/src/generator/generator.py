@@ -203,6 +203,59 @@ def policy_version_for_record(loan_type, year):
     return f"{loan_type}-v{y}-01"
 
 
+# ---------------------------------------------------------------- natural hash (F019)
+# The dedup module (src/dedup/) owns the natural-key normalisation and
+# hashing; the generator only stamps each record. Import it when it is
+# on the path (Batch worker, tests); fall back to the same rules when
+# generator.py runs standalone without src/dedup/ alongside it.
+try:
+    from dedup.natural_hash import natural_hash as _natural_hash
+except ImportError:  # standalone copy of generator.py
+    _natural_hash = None
+
+
+def _fallback_natural_hash(rec):
+    """Same rules as dedup.natural_hash, for standalone runs (see the
+    agreement test in tests/test_natural_hash.py). Kept in step with the
+    module by that test; change both together."""
+    import hashlib as _hashlib
+    import re as _re
+    from datetime import date as _date, datetime as _datetime
+
+    def _text(v):
+        return _re.sub(r"\s+", " ", str(v or "").strip().lower())
+
+    customer = _text(rec.get("customer", rec.get("name", "")))
+    loan_type = _text(rec.get("loan_type", ""))
+    amount = str(int(round(float(rec.get("amount", 0)))))
+    rate = f"{round(float(rec.get('rate', 0)), 2):.2f}"
+    tenure = str(int(float(rec.get("tenure", 0))))
+    start = rec.get("start_date", "")
+    if isinstance(start, _datetime):
+        start = start.date()
+    if isinstance(start, _date):
+        start = start.isoformat()
+    else:
+        text = str(start or "").strip()
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+            try:
+                start = _datetime.strptime(text, fmt).date().isoformat()
+                break
+            except ValueError:
+                continue
+        else:
+            raise ValueError(f"unrecognised start_date: {start!r}")
+    joined = "|".join((customer, loan_type, amount, rate, tenure, start))
+    return _hashlib.sha256(joined.encode("utf-8")).hexdigest()
+
+
+def natural_hash_for_record(rec):
+    """SHA256 of the record's normalised natural key (F019)."""
+    if _natural_hash is not None:
+        return _natural_hash(rec)
+    return _fallback_natural_hash(rec)
+
+
 def _seed_texts(entries):
     """Pull the plain `text` out of a terminology list (dicts or strings)."""
     out = []
@@ -355,7 +408,7 @@ def make_record(rng, i, year=None):
         rate_basis = str(seed.get("rate_basis", "") or "")
         prepayment = str(seed.get("prepayment", "") or "")
         amount_note = str(seed.get("amount_note", "") or "")
-    return {
+    rec = {
         "i": i, "loan_id": loan_id, "name": name, "type_key": key,
         "loan_type": label, "amount": amount, "rate": rate, "tenure": tenure,
         "emi": round(monthly, 2), "purpose": rng.choice(purposes),
@@ -378,6 +431,10 @@ def make_record(rng, i, year=None):
         "seed_fee": seed_fee, "rate_basis": rate_basis,
         "seed_prepayment": prepayment, "seed_amount_note": amount_note,
     }
+    # F019: hash of the business natural key (full content), so the
+    # worker can claim the record atomically in the dedup table.
+    rec["natural_hash"] = natural_hash_for_record(rec)
+    return rec
 
 
 # Four paraphrase variants per topic. Variant is chosen per record
@@ -396,7 +453,7 @@ def answer_for(rec):
             f"The interest rate for a {lt} is {rate}% per annum. For loan {lid}, the sanctioned rate is {rate}% on Rs. {amt:,} over {ten} months.",
             f"Loan {lid} carries {rate}% a year.{basis_txt} That is the rate applied to the {lt} of Rs. {amt:,}, repayable over {ten} months.",
             f"For this {lt}, the bank charges {rate}% per annum. The sanctioned amount is Rs. {amt:,}, and the term is {ten} months.",
-            f"At {rate}% per annum, this {lt} (loan {lid}) costs that rate on Rs. {amt:,} across a {ten}-month term.{basis_txt}",
+            f"At {rate}% per annum, this {lt} (loan {lid}) costs that rate on Rs. {amt:,}, across a {ten}-month term.{basis_txt}",
         ][v % 4]
     if t == "emi":
         return [
@@ -442,7 +499,7 @@ def answer_for(rec):
             f"Eligibility for a {lt} requires a credit score of 650 or above. The applicant for loan {lid} has a credit score of {rec['credit_score']}.",
             f"A score of 650 or higher is needed for this {lt}. This applicant scored {rec['credit_score']}, for loan {lid}.",
             f"Loan {lid}: the applicant's credit score is {rec['credit_score']}, which meets the 650 minimum for a {lt}.",
-            f"For a {lt}, the bank looks for a credit score of at least 650. Here the score is {rec['credit_score']}.",
+            f"For this {lt}, the bank looks for a credit score of at least 650. Here the score is {rec['credit_score']}.",
         ][v % 4]
     if t == "prepayment":
         # F016: the sourced prepayment term for this loan type, when the
@@ -833,6 +890,7 @@ def main():
                     "channel": rec["channel"], "question": rec["question"],
                     "answer": ans,
                     "policy_version": rec["policy_version"],
+                    "natural_hash": rec["natural_hash"],
                 }) + "\n")
             if (idx - args.start + 1) % 1000 == 0:
                 print(f"  ... {idx - args.start + 1}/{args.count} records done", flush=True)
