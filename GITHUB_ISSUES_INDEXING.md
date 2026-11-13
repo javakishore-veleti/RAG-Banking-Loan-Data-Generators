@@ -1,7 +1,8 @@
 # GitHub Issues Plan — Data Indexing Only
 
 > Scope: data indexing only. No retrieval, reranking, agents, or UI.
-> Those are the API-Services phase, with their own plan when it starts.
+> Those are the API-Services phase — see GITHUB_ISSUES_API_SERVICES.md
+> (M008–M010, 68 issues: local platform, Entitlements API, image pattern).
 >
 > **Totals: 2 milestones, 5 epics, 13 features, 35 stories = 55 issues**
 > (milestones are GitHub milestones, not issues; epics/features/stories
