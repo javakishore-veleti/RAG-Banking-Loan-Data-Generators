@@ -61,6 +61,41 @@ To refresh: fetch the source again, update the entry in `SEEDS.md`
 `terminology.yaml`, then run the tests above plus
 `python3 uniqueness_check.py --count 50 --seed 7`.
 
+## Policy corpus (F018)
+
+Policy documents are the other half of the corpus: one document =
+one rule that applies to thousands of loans (rate policy, prepayment
+rules, document checklists, fees, tenures, gold LTV caps), versioned
+over time — not one document per loan.
+
+- `src/policy/policy_generator.py` — dependency-free, deterministic,
+  fixed set: 2 versions per loan type × 7 loan types = **66 policy
+  documents** in all 6 formats, under
+  `policy/<loan_type>/version=<version>/`, plus `policy/manifest.jsonl`
+  (`record_kind: policy`).
+- `src/policy/versions.py` — the version table (v2023-01, v2024-01;
+  v2024-01 is latest), shared with the customer generator: every
+  customer record carries the `policy_version` in force for its loan
+  type in its start year, shown in its description lines and in
+  `manifest.jsonl`.
+- `data/policies/POLICIES.md` — manifest of the policy set: versions,
+  what changed, and the seed ID each rule traces to.
+- Rule text comes from the F016 seeds (`data/seeds/terminology.yaml`);
+  a rule that cannot be traced to a fetched seed is omitted, not
+  invented (business/MSME have no prepayment rule, auto has no fees
+  rule). Both versions currently carry the same figures — only one
+  fetch snapshot exists, so no historical figures were invented.
+- `tests/test_policy_corpus.py` checks version uniqueness, exactly
+  one latest per loan type, that every customer `policy_version`
+  exists, determinism, and that every rule traces to a seed.
+- Why policy docs are not generated at 200k/year: one rule applies
+  to thousands of loans, so 200,000 copies would be duplicate content
+  that drowns retrieval. See DESIGN.md §3.2.
+
+To regenerate: `python3 src/policy/policy_generator.py --out ./policy-corpus`.
+Policy docs are generated once, locally — the AWS upload wiring for
+the `policy/` prefix is still to be done (see HANDOVER.md).
+
 ## Deployments
 
 See `deployments/README.md`. In short: the image is built from
