@@ -10,10 +10,14 @@ name: AWS-Index-001 Provision (manual)
 # AWS_REGION, AWS_ACCOUNT_ID, PROJECT. Nothing is hard-coded.
 #
 # VPC — the indexing stacks run in the SAME VPC AWS-001 provisioned
-# (vpc_mode):
-#   reuse-existing (default): use the $PROJECT-vpc stack outputs if
-#     that stack exists; else VPC_ID / SUBNET_IDS /
-#     SECURITY_GROUP_IDS secrets (or the run inputs below).
+# (vpc_mode). Pick the same mode AWS-001 used:
+#   default-vpc (default): use the account's default VPC (found
+#     automatically — nothing to configure). Use this when AWS-001
+#     ran with vpc_mode=default-vpc.
+#   reuse-existing: use the $PROJECT-vpc stack outputs if that stack
+#     exists (AWS-001 ran with vpc_mode=create-new); else VPC_ID /
+#     SUBNET_IDS / SECURITY_GROUP_IDS secrets (or the run inputs
+#     below).
 #   create-new: deploy Datagen's infra/cloudformation/vpc.yaml first
 #     (same template AWS-001 uses; NAT gateway ~$32/month while the
 #     stack exists; Datagen's AWS-010 deletes it).
@@ -48,11 +52,12 @@ on:
         default: "false"
         options: ["true", "false"]
       vpc_mode:
-        description: "VPC source: reuse-existing (AWS-001 VPC stack/secrets) or create-new"
+        description: "VPC source: default-vpc (account default VPC — use when AWS-001 used default-vpc), reuse-existing (AWS-001 VPC stack/secrets) or create-new"
         required: true
         type: choice
-        default: "reuse-existing"
+        default: "default-vpc"
         options:
+          - default-vpc
           - reuse-existing
           - create-new
       vpc_id:
@@ -99,7 +104,7 @@ jobs:
           fi
           echo "AWS secrets present (values not shown). VPC mode: ${{ inputs.vpc_mode }}"
 
-      - name: Resolve VPC (reuse AWS-001 VPC, secrets, or create new)
+      - name: Resolve VPC (default VPC, AWS-001 VPC, secrets, or create new)
         run: |
           if [ "${{ inputs.vpc_mode }}" = "create-new" ]; then
             echo "Creating new VPC stack $PROJECT-vpc ..."
@@ -110,6 +115,15 @@ jobs:
             VPC_ID=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' --output text)
             SUBNET_IDS=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`SubnetIds`].OutputValue' --output text)
             SECURITY_GROUP_IDS=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`SecurityGroupId`].OutputValue' --output text)
+          elif [ "${{ inputs.vpc_mode }}" = "default-vpc" ]; then
+            echo "Using the account default VPC ..."
+            VPC_ID=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
+            if [ -z "$VPC_ID" ] || [ "$VPC_ID" = "None" ]; then
+              echo "::error::No default VPC found in this account/region. Re-run with vpc_mode=create-new."
+              exit 1
+            fi
+            SUBNET_IDS=$(aws ec2 describe-subnets --filters Name=vpc-id,Values=$VPC_ID --query 'join(`,`, Subnets[].SubnetId)' --output text)
+            SECURITY_GROUP_IDS=$(aws ec2 describe-security-groups --filters Name=vpc-id,Values=$VPC_ID Name=group-name,Values=default --query 'SecurityGroups[0].GroupId' --output text)
           elif aws cloudformation describe-stacks --stack-name $PROJECT-vpc >/dev/null 2>&1; then
             echo "Reusing $PROJECT-vpc stack from AWS-001 ..."
             VPC_ID=$(aws cloudformation describe-stacks --stack-name $PROJECT-vpc --query 'Stacks[0].Outputs[?OutputKey==`VpcId`].OutputValue' --output text)
@@ -122,7 +136,7 @@ jobs:
             SECURITY_GROUP_IDS="${{ inputs.security_group_ids || secrets.SECURITY_GROUP_IDS }}"
           fi
           if [ -z "$VPC_ID" ] || [ -z "$SUBNET_IDS" ] || [ -z "$SECURITY_GROUP_IDS" ]; then
-            echo "::error::VPC not resolved (mode=${{ inputs.vpc_mode }}). Run AWS-001 first (it creates the shared VPC), set the VPC_ID / SUBNET_IDS / SECURITY_GROUP_IDS secrets, pass vpc_id / subnet_ids / security_group_ids inputs, or re-run with vpc_mode=create-new."
+            echo "::error::VPC not resolved (mode=${{ inputs.vpc_mode }}). Run AWS-001 first with the same vpc_mode, or re-run with vpc_mode=default-vpc (account default VPC) or vpc_mode=create-new."
             exit 1
           fi
           echo "VPC_ID=$VPC_ID" >> $GITHUB_ENV
