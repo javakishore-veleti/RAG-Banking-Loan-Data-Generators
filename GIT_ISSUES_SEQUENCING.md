@@ -1,9 +1,9 @@
 # GitHub Issues Sequencing — RAG Banking Loan Corpus
 
 This is the **execution order (sequencing)**, not a sort. Read it top to
-bottom: M001 first, M007 last. Inside a milestone, work epic by epic, then
+bottom: M001 first, M010 last. Inside a milestone, work epic by epic, then
 feature by feature, then story by story — always in ID order
-(E001 → E014, F001 → F046, S001 → S120). The IDs **are** the sequence:
+(E001 → E019, F001 → F064, S001 → S165). The IDs **are** the sequence:
 GitHub sorts issues by created or updated date, not by execution order,
 so the IDs are what tell you what comes next.
 
@@ -26,12 +26,16 @@ exit criteria pass (see "The gates between milestones" at the end).
 - [M005: Scale and Hardening](#m005-scale-and-hardening)
 - [M006: Indexing Foundation and Pipeline](#m006-indexing-foundation-and-pipeline)
 - [M007: Indexes, Quality and Hardening](#m007-indexes-quality-and-hardening)
+- [M008: Local Development Platform](#m008-local-development-platform)
+- [M009: Entitlements API Service](#m009-entitlements-api-service)
+- [M010: Microservice Images, Pattern and Portals](#m010-microservice-images-pattern-and-portals)
 - [The gates between milestones](#the-gates-between-milestones)
 
 ## How sequencing works
 
 1. **Milestones run in order:** M001 → M002 → M003 → M004 → M005, then
-   M006 → M007 for indexing. Indexing builds on the generated corpus, so
+   M006 → M007 for indexing, then M008 → M009 → M010 for API Services
+   and the local platform. Indexing builds on the generated corpus, so
    M006 needs documents to exist before it can index them.
 2. **Inside a milestone, epics run in ID order.** Inside an epic,
    features run in ID order. Inside a feature, stories run in ID order.
@@ -375,6 +379,127 @@ data deletion verified.
 1. S119 #179 ✅ README §15, ARCHITECTURE §15, DESIGN §16 + decision log updated.
 2. S120 #180 ✅ CI runs indexer tests + py_compile; GITHUB_ISSUES_INDEXING.md plan + create-index-issues workflow in repo.
 
+## M008: Local Development Platform
+
+Status: **Open — 26 open, 0 closed (26 total)**. Goal: all local infra runs with one command; Python toolchain is uv. Exit criteria: docker-all-up brings up Postgres, Redis, ELK, RabbitMQ; status shows all healthy; package.json container commands work.
+
+### E015 #182 ⬜ Local container platform
+
+#### F047 #187 ⬜ Postgres via docker-compose
+
+1. S121 #188 ⬜ Postgres docker-compose.yaml: port, volume, healthcheck.
+2. S122 #189 ⬜ Multiple schemas in one server (postgres/postgres); schema-per-service convention.
+3. S123 #190 ⬜ Postgres reachable from host and containers.
+
+#### F048 #191 ⬜ Redis via docker-compose
+
+1. S124 #192 ⬜ Redis docker-compose.yaml: persistence, port, healthcheck.
+2. S125 #193 ⬜ Redis reachable from FastAPI services.
+
+#### F049 #194 ⬜ ELK via docker-compose
+
+1. S126 #195 ⬜ ELK docker-compose.yaml: Elasticsearch single-node + Kibana.
+2. S127 #196 ⬜ Logstash pipeline receives application logs.
+3. S128 #197 ⬜ Kibana shows service logs.
+
+#### F050 #198 ⬜ RabbitMQ via docker-compose
+
+1. S129 #199 ⬜ RabbitMQ docker-compose.yaml: management UI, port, healthcheck.
+2. S130 #200 ⬜ Queue / exchange naming conventions documented.
+
+#### F051 #201 ⬜ docker-all scripts
+
+1. S131 #202 ⬜ docker-all-up.sh starts all local containers.
+2. S132 #203 ⬜ docker-all-down.sh stops and removes them.
+3. S133 #204 ⬜ docker-all-status.sh reports each container's state.
+
+### E016 #183 ⬜ Local developer commands
+
+#### F052 #205 ⬜ package.json container commands
+
+1. S134 #206 ⬜ local:containers:all:start / stop / status map to docker-all scripts.
+2. S135 #207 ⬜ Per-service container commands.
+
+#### F053 #208 ⬜ uv for Python
+
+1. S136 #209 ⬜ uv setup with lockfiles per service; Python version pinned.
+2. S137 #210 ⬜ CI installs and tests with uv.
+
+## M009: Entitlements API Service
+
+Status: **Open — 21 open, 0 closed (21 total)**. Goal: FastAPI Entitlements service: signup, signin, obtain features, roles. Exit criteria: local signup → signin → GET /features works end to end; migrations apply on start; 6 roles seeded.
+
+### E017 #184 ⬜ Entitlements API
+
+#### F054 #211 ⬜ FastAPI service skeleton
+
+1. S138 #212 ⬜ entitlements_api: FastAPI app + uv project + Dockerfile + health endpoint.
+2. S139 #213 ⬜ Config via environment (DB URL, Redis URL, JWT secret).
+3. S140 #214 ⬜ CI runs its tests.
+
+#### F055 #215 ⬜ entitlements_db schema & migrations
+
+1. S141 #216 ⬜ entitlements_db schema: users, roles, entitlements tables.
+2. S142 #217 ⬜ Alembic migrations: versioned, up/down, applied on start.
+3. S143 #218 ⬜ Seed data: the 6 roles.
+
+#### F056 #219 ⬜ SignUp & SignIn
+
+1. S144 #220 ⬜ POST /signup: validation, password hashing, default role.
+2. S145 #221 ⬜ POST /signin: credential check, JWT access + refresh tokens.
+3. S146 #222 ⬜ Token-verification dependency protecting endpoints.
+
+#### F057 #223 ⬜ Obtain features
+
+1. S147 #224 ⬜ GET /features returns the caller's entitlements.
+2. S148 #225 ⬜ Role → feature mapping stored in tables.
+3. S149 #226 ⬜ New roles can be added without code changes.
+
+#### F058 #227 ⬜ bin/start-app.sh (migrate then start)
+
+1. S150 #228 ⬜ start-app.sh runs migrations, then starts Uvicorn.
+2. S151 #229 ⬜ Local run works via package.json local:middleware:apis:all:start.
+3. S152 #230 ⬜ Health + logs visible (ELK, docker-all-status).
+
+## M010: Microservice Images, Pattern & Portals
+
+Status: **Open — 21 open, 0 closed (21 total)**. Goal: every microservice builds an image, follows one template, portals run locally. Exit criteria: Entitlements image in ECR via manual AWS-012; second service bootstraps from the template; Loan-Advisor runs locally against local APIs.
+
+### E018 #185 ⬜ Microservice template & local runners
+
+#### F059 #231 ⬜ Microservice template
+
+1. S153 #232 ⬜ Template layout documented (bin/start-app.sh, uv, Dockerfile, health endpoint).
+2. S154 #233 ⬜ A second service bootstraps from the template.
+
+#### F060 #234 ⬜ package.json middleware & portals commands
+
+1. S155 #235 ⬜ local:middleware:apis:all:start / stop / status run the .sh runners.
+2. S156 #236 ⬜ local:portals:all:start / stop / status run the portal .sh runners.
+
+#### F061 #237 ⬜ Portals local startup
+
+1. S157 #238 ⬜ Loan-Advisor runs locally against the local APIs.
+2. S158 #239 ⬜ Signup → signin flow works end to end from the portal.
+
+### E019 #186 ⬜ Container images & ECR publishing
+
+#### F062 #240 ⬜ CI builds images on main only
+
+1. S159 #241 ⬜ ci.yaml builds microservice Docker images only on main branch.
+2. S160 #242 ⬜ PR / branch runs skip image builds.
+
+#### F063 #243 ⬜ AWS-012: build & publish Entitlements image to ECR
+
+1. S161 #244 ⬜ Manual workflow builds the entitlements image.
+2. S162 #245 ⬜ Image pushed to ECR repo <project>-entitlements.
+3. S163 #246 ⬜ Manual trigger only; no auto-publish on push.
+
+#### F064 #247 ⬜ Image pattern per microservice
+
+1. S164 #248 ⬜ Reusable build workflow (or per-service convention) documented.
+2. S165 #249 ⬜ The next microservice gets its image workflow by copying the pattern.
+
 ## The gates between milestones
 
 These rules decide when you may move on. They are not visible in GitHub's
@@ -396,3 +521,4 @@ and verified gone (AWS-099 ALL CLEAR). Nothing is deployed. Before any
 M004/M006/M007 work can run again, rebuild first — see HANDOVER.md §3.
 The VPC question (default VPC vs create-new) is still open and blocks
 any rebuild.
+5. **M008 → M009 → M010.** Do not start M009 before M008 is done — the Entitlements service needs local Postgres/Redis running. Do not start M010 before M009 — the microservice template and the AWS-012 image workflow are copied from the Entitlements service.
