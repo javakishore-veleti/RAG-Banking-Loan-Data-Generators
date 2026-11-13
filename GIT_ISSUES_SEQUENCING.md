@@ -124,7 +124,7 @@ with Q&A. Exit criteria: 10 records × 6 formats verified; manifest complete.
 2. S026 #47 ✅ One run = one format + one year (200k/year target).
 ## M003: Uniqueness and Realism
 
-Status: **Open — 20 open, 16 closed (36 total)**. Goal: descriptions are
+Status: **Open — 16 open, 20 closed (36 total)**. Goal: descriptions are
 unique enough for RAG; seeded from real artifacts. Exit criteria:
 wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 
@@ -150,11 +150,11 @@ wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 
 ### E005 #5 ⬜ Realism and real-artifact seeding
 
-#### F016 #60 ⬜ Real artifact seeding
+#### F016 #60 ✅ Real artifact seeding
 
-1. S036 #61 ⬜ Collect 20+ real public artifacts (blank loan forms, MITC sheets, RBI Master Directions, CFPB complaints) as seed templates.
-2. S037 #62 ⬜ Extract real terminology, rate ranges, and document checklists from the seeds.
-3. S038 #63 ⬜ Generator templates use the seed terminology, not invented wording.
+1. S036 #61 ✅ Collect 20+ real public artifacts (blank loan forms, MITC sheets, RBI Master Directions, CFPB complaints) as seed templates.
+2. S037 #62 ✅ Extract real terminology, rate ranges, and document checklists from the seeds.
+3. S038 #63 ✅ Generator templates use the seed terminology, not invented wording.
 
 #### F017 #64 ✅ Realistic distributions
 
