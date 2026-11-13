@@ -128,7 +128,7 @@ with Q&A. Exit criteria: 10 records × 6 formats verified; manifest complete.
 2. S026 #47 ✅ One run = one format + one year (200k/year target).
 ## M003: Uniqueness and Realism
 
-Status: **Open — 8 open, 28 closed (36 total)**. Goal: descriptions are
+Status: **Open — 7 open, 29 closed (36 total)**. Goal: descriptions are
 unique enough for RAG; seeded from real artifacts. Exit criteria:
 wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 
@@ -152,7 +152,7 @@ wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 2. S034 #58 ✅ Generate → measure → reject/regenerate, up to 5 attempts per record.
 3. S035 #59 ✅ Log how many descriptions were rejected/regenerated per run.
 
-### E005 #5 ⬜ Realism and real-artifact seeding
+### E005 #5 ✅ Realism and real-artifact seeding
 
 #### F016 #60 ✅ Real artifact seeding
 
