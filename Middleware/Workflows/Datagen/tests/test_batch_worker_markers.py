@@ -38,6 +38,7 @@ for _name in _ADDED_ENV:
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from worker import batch_worker  # noqa: E402
+from dedup.natural_hash import CLAIM_CONDITION  # noqa: E402
 
 for _name in _ADDED_ENV:
     os.environ.pop(_name, None)
@@ -84,19 +85,27 @@ class _ConditionalCheckFailed(Exception):
 
 class FakeTable:
     """In-memory DynamoDB table keyed by `key` (doc_id or natural_hash).
-    The conditional-claim path is used by the S048 #77 retry tests."""
+    For the dedup table it applies the meaning of the claim condition
+    (dedup.natural_hash.CLAIM_CONDITION): the hash is free, or the stored
+    claim is the same record (same doc_id and loan_id)."""
 
     def __init__(self, key):
         self.key = key
         self.items = {}
         self.calls = []
 
-    def put_item(self, Item, ConditionExpression=None):
+    def put_item(self, Item, ConditionExpression=None,
+                 ExpressionAttributeValues=None):
         self.calls.append(dict(Item))
         k = Item[self.key]
-        if (ConditionExpression == f"attribute_not_exists({self.key})"
-                and k in self.items):
-            raise _ConditionalCheckFailed()
+        if ConditionExpression is not None:
+            assert ConditionExpression == CLAIM_CONDITION, ConditionExpression
+            vals = ExpressionAttributeValues or {}
+            old = self.items.get(k)
+            if old is not None and not (
+                    old["doc_id"] == vals.get(":doc_id")
+                    and old["loan_id"] == vals.get(":loan_id")):
+                raise _ConditionalCheckFailed()
         self.items[k] = dict(Item)
         return {}
 
@@ -208,3 +217,53 @@ def test_main_deletes_message_on_replay_of_marked_shard(fakes):
     assert batch_worker.main() == 0
     assert fakes.sqs.deleted == ["rh-1"]
     assert fakes.s3.puts == []
+
+
+# ---------------------------------------------------------------- S048 #77
+# A retried shard (crashed half-way, no marker) must give exactly the
+# clean run's S3 keys and DynamoDB items (DESIGN.md §6.1, §12.1, §12.3).
+
+def _run_clean(dedup_on):
+    ns = SimpleNamespace(s3=FakeS3(), table=FakeTable("doc_id"),
+                         dedup=FakeTable("natural_hash"))
+    _wire(ns, dedup_on)
+    ns.returned = batch_worker.process_shard(dict(MSG))
+    return ns
+
+
+def _run_crash_then_retry(dedup_on):
+    # Crash on the 3rd put: record 0 is fully written, record 1 is
+    # claimed (when dedup is on) but its first upload fails.
+    ns = SimpleNamespace(s3=FakeS3(fail_on_put=3), table=FakeTable("doc_id"),
+                         dedup=FakeTable("natural_hash"))
+    _wire(ns, dedup_on)
+    with pytest.raises(RuntimeError):
+        batch_worker.process_shard(dict(MSG))
+    ns.s3.fail_on_put = None
+    ns.returned = batch_worker.process_shard(dict(MSG))
+    return ns
+
+
+def _wire(ns, dedup_on):
+    # Plain assignment is safe: callers use the `fakes` fixture, whose
+    # monkeypatch restores these globals after the test.
+    batch_worker.s3 = ns.s3
+    batch_worker.table = ns.table
+    batch_worker.dedup_table = ns.dedup if dedup_on else None
+
+
+def _raw_keys(ns):
+    return sorted(k for k in ns.s3.objects if k.startswith("raw/"))
+
+
+def test_retry_with_dedup_matches_clean_run(fakes):
+    clean = _run_clean(True)
+    retry = _run_crash_then_retry(True)
+    assert retry.returned == clean.returned == 6
+    assert json.loads(retry.s3.objects[MARKER]) == {
+        "shard_id": "shard-0000", "files": 6}
+    assert retry.s3.objects[MARKER] == clean.s3.objects[MARKER]
+    assert _raw_keys(retry) == _raw_keys(clean)
+    assert retry.table.items == clean.table.items
+    assert retry.dedup.items == clean.dedup.items
+    assert retry.s3.objects[MANIFEST] == clean.s3.objects[MANIFEST]

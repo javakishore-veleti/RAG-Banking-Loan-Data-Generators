@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import generator.generator as genmod
 from dedup.natural_hash import (
+    CLAIM_CONDITION,
     NATURAL_KEY_FIELDS,
     claim_natural_hash,
     natural_hash,
@@ -58,11 +59,19 @@ class FakeTable:
     def __init__(self):
         self.items = {}
 
-    def put_item(self, Item, ConditionExpression=None):
+    def put_item(self, Item, ConditionExpression=None,
+                 ExpressionAttributeValues=None):
         key = Item["natural_hash"]
-        if (ConditionExpression == "attribute_not_exists(natural_hash)"
-                and key in self.items):
-            raise _ConditionalCheckFailed()
+        if ConditionExpression is not None:
+            # Apply the meaning of the claim condition, not a string match:
+            # the hash is free, or the stored claim is this same record.
+            assert ConditionExpression == CLAIM_CONDITION, ConditionExpression
+            vals = ExpressionAttributeValues or {}
+            old = self.items.get(key)
+            if old is not None and not (
+                    old["doc_id"] == vals.get(":doc_id")
+                    and old["loan_id"] == vals.get(":loan_id")):
+                raise _ConditionalCheckFailed()
         self.items[key] = Item
         return {}
 
@@ -137,9 +146,24 @@ def test_claim_first_wins_second_returns_false():
         "pdf_0000002", "LN123456000003") is True
 
 
+def test_claim_same_record_reclaims_other_record_loses():
+    # S048 #77: a retried shard regenerates the same record (same doc_id,
+    # same loan_id) and must win its own claim again; any other record
+    # with the same natural hash is still a duplicate.
+    table = FakeTable()
+    h = natural_hash(BASE)
+    assert claim_natural_hash(table, h, "pdf_0000000", "LN1") is True
+    assert claim_natural_hash(table, h, "pdf_0000000", "LN1") is True
+    assert claim_natural_hash(table, h, "pdf_0000001", "LN1") is False
+    assert claim_natural_hash(table, h, "pdf_0000000", "LN2") is False
+    assert table.items[h]["doc_id"] == "pdf_0000000"
+    assert table.items[h]["loan_id"] == "LN1"
+
+
 def test_claim_other_errors_raise():
     class FailingTable(FakeTable):
-        def put_item(self, Item, ConditionExpression=None):
+        def put_item(self, Item, ConditionExpression=None,
+                     ExpressionAttributeValues=None):
             raise _OtherError()
 
     try:

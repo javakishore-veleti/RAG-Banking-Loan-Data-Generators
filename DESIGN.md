@@ -304,9 +304,12 @@ two records can have identical unique fields and different `doc_id`s.
 3. **Hash:** `natural_hash = SHA256(normalised fields joined by |)`.
 4. **Claim atomically** in the dedup table, whose PK *is*
    `natural_hash`:
-   `PutItem, ConditionExpression: attribute_not_exists(natural_hash)`.
-   The first writer wins; the second gets a conditional-check
-   failure and skips the file.
+   `PutItem, ConditionExpression: attribute_not_exists(natural_hash)
+   OR (doc_id = :doc_id AND loan_id = :loan_id)`.
+   The first writer wins; a different record gets a conditional-check
+   failure and skips the file. The same record re-claiming (a retried
+   shard regenerates identical records) wins again, so a retry never
+   drops records its failed attempt claimed (S048 #77).
 5. **S3 key includes the hash** (or the natural key), so identical
    content lands on the identical object. *Not built in F019:* the
    atomic claim in step 4 is the guard, so S3 keys are unchanged for

@@ -28,6 +28,13 @@ from datetime import date, datetime
 
 NATURAL_KEY_FIELDS = ("customer", "loan_type", "amount", "rate", "tenure", "start_date")
 
+# The claim wins when the hash is free, or when the stored claim is this
+# same record (S048 #77): a retried shard regenerates identical records,
+# so it must win its own earlier claim instead of skipping — and losing —
+# them as "duplicates". A different record with the same hash still loses.
+CLAIM_CONDITION = ("attribute_not_exists(natural_hash) OR "
+                   "(doc_id = :doc_id AND loan_id = :loan_id)")
+
 _WHITESPACE = re.compile(r"\s+")
 _DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d")
 
@@ -93,9 +100,11 @@ def natural_hash(rec):
 def claim_natural_hash(table, hash_value, doc_id, loan_id):
     """Claim a natural hash in the dedup table (PK is natural_hash).
 
-    Returns True if this writer won the claim, False if another writer
-    already claimed the same hash (a duplicate — the caller must skip
-    the file: no S3 upload, no manifest row). Any other error raises.
+    Returns True if this writer won the claim (or already holds it: the
+    same doc_id and loan_id, as on a retry of the same shard), False if
+    another record already claimed the same hash (a duplicate — the
+    caller must skip the file: no S3 upload, no manifest row). Any other
+    error raises.
 
     `table` is a DynamoDB Table object (real or fake); no boto3 import
     is needed here. A conditional failure is recognised by the error's
@@ -104,7 +113,8 @@ def claim_natural_hash(table, hash_value, doc_id, loan_id):
     try:
         table.put_item(
             Item={"natural_hash": hash_value, "doc_id": doc_id, "loan_id": loan_id},
-            ConditionExpression="attribute_not_exists(natural_hash)",
+            ConditionExpression=CLAIM_CONDITION,
+            ExpressionAttributeValues={":doc_id": doc_id, ":loan_id": loan_id},
         )
         return True
     except Exception as exc:  # noqa: BLE001 — inspect the AWS error code

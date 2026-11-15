@@ -64,3 +64,6 @@
 - [ ] **Step 4: Commit** `S048 #77: test retry gives identical keys and manifest items`, push.
 
 ## Ledger
+- Ruling: executed inline with superpowers:executing-plans, not subagent-driven — two small tasks sharing one test file's fakes and helpers (tightly coupled); a fresh reviewer subagent reviews the branch at step 9 — cost if wrong: no per-task review gate.
+- Task 1 BASE 6d98888. RED stage 1: ImportError (`CLAIM_CONDITION` missing). RED stage 2 (constant = old condition): `test_retry_with_dedup_matches_clean_run` fails `assert 2 == 6`, `test_claim_same_record_reclaims_other_record_loses` fails on the re-claim (False). GREEN after the self-claim condition: Datagen 40, DataIndexing 8.
+- Ruling: also updated the F019 comment in `batch_worker.py` (comment only, no code) and DESIGN.md §6.3 step 4 — both described the old claim and would now mislead — cost if wrong: two doc lines to revert.
