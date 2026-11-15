@@ -71,6 +71,13 @@ Non-goals: Glue/Athena infrastructure, AWS calls, description overlap (that is S
 changes to the generator or `uniqueness_check.py`. Anti-goal: an audit that passes because
 it reads nothing — an empty manifest is an error (exit 2), not a clean pass.
 
+Found during design (follow-up, not built here): the Batch worker's S3 shard manifest rows
+(`src/worker/batch_worker.py`, `manifests/<run_id>/<shard_id>.jsonl`) do not carry
+`natural_hash`, so the Athena run of this SQL needs that column added to the worker row
+first. The worker belongs to Track A (S047/S048) in this milestone, so this story does not
+touch it; the audit reports such rows as bad input (exit 2) instead of passing silently.
+Policy manifests (`record_kind: policy`, F018) have no natural key and are out of scope.
+
 Left to the builder: exact print format, test fixture helpers.
 
 ## Acceptance
