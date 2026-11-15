@@ -146,8 +146,8 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #79 | 7 | `/rag-bank-loan-commit-push 79` after every task (repeat) | Done | 2026-11-15 12:08 | 2026-11-15 12:08 |
 | #79 | 8 | `/verification-before-completion Story #79` | Done | 2026-11-15 12:08 | 2026-11-15 12:08 |
 | #79 | 9 | `/requesting-code-review Story #79` | Done | 2026-11-15 12:08 | 2026-11-15 12:11 |
-| #79 | 10 | `/rag-bank-loan-commit-push 79` | In progress | 2026-11-15 12:11 | - |
-| #79 | 11 | `/finishing-a-development-branch Story #79` | Planned | - | - |
+| #79 | 10 | `/rag-bank-loan-commit-push 79` | Done | 2026-11-15 12:11 | 2026-11-15 12:11 |
+| #79 | 11 | `/finishing-a-development-branch Story #79` | In progress | 2026-11-15 12:11 | - |
 | #79 | 12 | `/rag-bank-loan-story-complete 79` | Planned | - | - |
 | #80 | 1 | `/rag-bank-loan-story-start 80` | Planned | - | - |
 | #80 | 2 | `/brainstorming Story #80: audit also runs the description-overlap check (uniqueness_check.py) and fails above the M003 limits` | Planned | - | - |
