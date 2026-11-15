@@ -53,6 +53,28 @@ class _OtherError(Exception):
         self.response = {"Error": {"Code": "ValidationException"}}
 
 
+# Literal claim conditions, typed by hand (never imported from the code
+# under test), each with the meaning real DynamoDB gives it. A fake that
+# took the expression from the module would pass whatever it says.
+OLD_CLAIM = "attribute_not_exists(natural_hash)"
+SELF_CLAIM = ("attribute_not_exists(natural_hash) OR "
+              "(doc_id = :doc_id AND loan_id = :loan_id)")
+
+
+def claim_allowed(expr, values, old):
+    """True when DynamoDB would accept the conditional put. Like DynamoDB,
+    rejects bound values the expression does not use."""
+    values = values or {}
+    if expr == OLD_CLAIM:
+        assert not values, f"unused ExpressionAttributeValues {values}"
+        return old is None
+    if expr == SELF_CLAIM:
+        assert set(values) == {":doc_id", ":loan_id"}, values
+        return old is None or (old["doc_id"] == values[":doc_id"]
+                               and old["loan_id"] == values[":loan_id"])
+    raise AssertionError(f"fake does not model condition {expr!r}")
+
+
 class FakeTable:
     """Minimal stand-in for a DynamoDB Table with a natural_hash PK."""
 
@@ -62,16 +84,10 @@ class FakeTable:
     def put_item(self, Item, ConditionExpression=None,
                  ExpressionAttributeValues=None):
         key = Item["natural_hash"]
-        if ConditionExpression is not None:
-            # Apply the meaning of the claim condition, not a string match:
-            # the hash is free, or the stored claim is this same record.
-            assert ConditionExpression == CLAIM_CONDITION, ConditionExpression
-            vals = ExpressionAttributeValues or {}
-            old = self.items.get(key)
-            if old is not None and not (
-                    old["doc_id"] == vals.get(":doc_id")
-                    and old["loan_id"] == vals.get(":loan_id")):
-                raise _ConditionalCheckFailed()
+        if ConditionExpression is not None and not claim_allowed(
+                ConditionExpression, ExpressionAttributeValues,
+                self.items.get(key)):
+            raise _ConditionalCheckFailed()
         self.items[key] = Item
         return {}
 
@@ -144,6 +160,12 @@ def test_claim_first_wins_second_returns_false():
     assert claim_natural_hash(
         table, natural_hash({**BASE, "amount": 2000000}),
         "pdf_0000002", "LN123456000003") is True
+
+
+def test_claim_condition_is_the_self_claim_literal():
+    # Pins the production expression (S048 #77): reverting to the old
+    # condition, or dropping the loan_id guard, fails here.
+    assert CLAIM_CONDITION == SELF_CLAIM
 
 
 def test_claim_same_record_reclaims_other_record_loses():

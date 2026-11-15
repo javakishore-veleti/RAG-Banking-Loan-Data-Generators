@@ -70,3 +70,14 @@
 - Task 1: complete (commits 6d98888..3013695).
 - Task 2 BASE 3013695. 3 tests green against current code. RED by mutation: (a) `_{time.time_ns()}` appended to the file name → 4 tests fail (both retry-equality tests, identical-rewrite, key format); (b) a wall-clock `"t"` field in the manifest row → 3 tests fail (retry equality ×2, identical rewrite). Worker restored. Datagen 43, DataIndexing 8.
 - Task 2: complete (this commit).
+
+## Code review (step 9, fresh reviewer subagent, range 0249201..81594c2)
+
+Verdict: with fixes. 0 Critical, 1 Important, 2 Minor. Production expression confirmed valid for real DynamoDB (syntax, no reserved words, both placeholders used and bound) and no new path for a genuine duplicate found (other format, other shard, other seed/year, parallel workers).
+
+1. Important — tests did not protect the fix: both dedup fakes compared against `CLAIM_CONDITION` imported from the code under test and hard-coded the new meaning, so reverting the constant to the old condition (values still bound) or dropping the loan_id guard left all 43 green. (The ledger's RED stage 2 failed only because values were not bound yet.) → fixed: `test_natural_hash.py` now holds hand-typed literals `OLD_CLAIM` / `SELF_CLAIM` and `claim_allowed(expr, values, old)` giving each its DynamoDB meaning; both fakes use it (markers test imports it); new `test_claim_condition_is_the_self_claim_literal` pins the production string. Re-run of the mutations: old condition with values bound → 5 fail; original code (old condition, no values) → 4 fail incl. `test_retry_with_dedup_matches_clean_run`; loan_id guard dropped → 5 fail.
+2. Minor — fakes did not reject unused bound values (DynamoDB ValidationException) → fixed in `claim_allowed`.
+3. Minor — no worker-level test of a genuine duplicate after the fix → added `test_hash_claimed_by_another_record_is_still_skipped` (record 0's hash held by another doc_id: 4 files, marker `files: 4`, no record-0 key or row).
+
+Declined-to-judge items, ruled: cross-run replay with the same seed now re-wins claims and overwrites rows with identical keys (benign, matches "same seed ⇒ same corpus"); a replay whose `formats` differ after `formats[0]` writes the extra format (runs are one document type, DESIGN.md); DOCX/XLSX zip timestamps (spec non-goal, follow-up); loan_id `[-12:]` truncation at idx ≥ 1,000,000 (pre-existing, unchanged).
+Datagen 45 passed, DataIndexing 8 passed.
