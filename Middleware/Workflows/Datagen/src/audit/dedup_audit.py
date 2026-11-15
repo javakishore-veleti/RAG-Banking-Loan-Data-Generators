@@ -34,21 +34,35 @@ def load_manifest(path):
     if not path.is_file():
         raise ManifestError(f"manifest not found: {path}")
     rows = []
-    with open(path, encoding="utf-8") as fh:
-        for n, line in enumerate(fh, start=1):
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ManifestError(f"{path}: line {n}: not valid JSON ({exc.msg})") from None
-            if not isinstance(row, dict):
-                raise ManifestError(f"{path}: line {n}: not a JSON object")
-            missing = [f for f in REQUIRED_FIELDS if not row.get(f)]
-            if missing:
-                raise ManifestError(f"{path}: line {n}: missing {', '.join(missing)}")
-            rows.append(row)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for n, line in enumerate(fh, start=1):
+                if line.strip():
+                    rows.append(_parse_row(path, n, line))
+    except UnicodeDecodeError as exc:
+        raise ManifestError(f"{path}: not valid UTF-8 ({exc.reason} at byte {exc.start})") from None
+    except OSError as exc:
+        raise ManifestError(f"{path}: cannot read ({exc})") from None
     return rows
+
+
+def _parse_row(path, n, line):
+    """One manifest line as a dict; ManifestError naming the line if bad."""
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise ManifestError(f"{path}: line {n}: not valid JSON ({exc.msg})") from None
+    if not isinstance(row, dict):
+        raise ManifestError(f"{path}: line {n}: not a JSON object")
+    missing = [f for f in REQUIRED_FIELDS if not row.get(f)]
+    if missing:
+        raise ManifestError(f"{path}: line {n}: missing {', '.join(missing)}")
+    # Bound columns must be strings (or absent for the ID columns), so
+    # sqlite can bind them and 5 / "5" never collapse to one key.
+    for field in REQUIRED_FIELDS + ("doc_id", "loan_id"):
+        if field in row and row[field] is not None and not isinstance(row[field], str):
+            raise ManifestError(f"{path}: line {n}: {field} must be a string")
+    return row
 
 
 def find_duplicates(rows):
