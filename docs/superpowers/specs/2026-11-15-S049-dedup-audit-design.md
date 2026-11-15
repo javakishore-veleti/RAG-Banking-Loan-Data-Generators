@@ -64,8 +64,10 @@ where the SQL that will run in Athena is the SQL the tests run.
     `Dedup audit: <N> manifest rows, <D> duplicate natural key(s)` and one line per
     duplicate. Exit 0 when clean, 1 when duplicates are found, 2 on bad input (missing
     file, malformed row).
-- CI: one step generates a small run into `$RUNNER_TEMP` and runs the audit, so every PR
-  proves a clean run audits clean.
+- CI: the existing `pytest Middleware/Workflows/Datagen/tests/` step runs the audit tests,
+  which generate a 200-record run and audit it, so every PR proves a clean run audits clean.
+  (A dedicated workflow step was planned but cannot be pushed: the push token lacks the
+  GitHub `workflow` scope. The one-line step is in the plan for Kishore to add if wanted.)
 
 Non-goals: Glue/Athena infrastructure, AWS calls, description overlap (that is S050 #80),
 changes to the generator or `uniqueness_check.py`. Anti-goal: an audit that passes because
@@ -101,4 +103,5 @@ Left to the builder: exact print format, test fixture helpers.
   exits 2 with a message naming the problem.
 - [ ] A9 — No new dependencies; both test suites pass and the new tests are collected
   (Datagen count goes up).
-- [ ] A10 — CI runs the audit on a freshly generated run.
+- [ ] A10 — CI runs the audit on a freshly generated run (through the existing Datagen
+  pytest step: `test_generated_run_audits_clean`, `test_cli_script_runs_standalone`).
