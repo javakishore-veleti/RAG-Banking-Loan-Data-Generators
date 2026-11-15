@@ -37,15 +37,15 @@
 **Interfaces:**
 - Produces (used by Task 2, same file): `FakeS3(fail_on_put: int | None = None)` with `.objects: dict[str, bytes]`, `.puts: list[str]` (keys in put order), `head_object(Bucket, Key)`, `put_object(Bucket, Key, Body, ContentType)`; `FakeTable(key: str)` with `.items: dict`, `.calls: list[dict]`, `put_item(Item, ConditionExpression=None)`; fixture `fakes(monkeypatch) -> SimpleNamespace(s3, table, dedup)` that patches `batch_worker.s3`, `.table`, `.dedup_table` (to `None` by default; tests opt in), `.sqs`, and `batch_worker.time.sleep`; constant `MSG` (Global Constraints message).
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
   - `test_fresh_shard_writes_files_then_marker_last`: `process_shard(dict(MSG)) == 6`; 6 keys in `s3.puts` start with `raw/`; `s3.puts[-2] == "manifests/t-run/shard-0000.jsonl"` with 6 JSON lines; `s3.puts[-1] == "markers/t-run/shard-0000.done"`; `json.loads(marker) == {"shard_id": "shard-0000", "files": 6}`; `len(table.items) == 6`.
   - `test_replay_of_marked_shard_writes_nothing`: dedup table enabled; pre-seed marker in `s3.objects`; reset `s3.puts`; `process_shard == 0`; `s3.puts == []`, `table.calls == []`, `dedup.calls == []`.
   - `test_marker_check_other_error_raises`: `head_object` raising `ClientError` code `403` → `process_shard` raises `ClientError`, no puts.
   - `test_failed_shard_writes_no_marker_then_rerun_finishes`: `FakeS3(fail_on_put=3)` → `pytest.raises(RuntimeError)`; marker and manifest absent; 2 `raw/` objects present; clear `fail_on_put`; rerun returns 6 and marker exists.
-- [ ] **Step 2: Run** `.../runtime_data/venv/bin/python -m pytest Middleware/Workflows/Datagen/tests/test_batch_worker_markers.py -v` — Expected: 4 passed (code exists).
-- [ ] **Step 3: RED by mutation** — temporarily (a) move the marker `put_object` above the record loop and (b) replace the head-check `return 0` with `pass`; run; Expected: fresh-shard / failed-shard tests fail under (a), replay test fails under (b). Restore with `git checkout -- Middleware/Workflows/Datagen/src/worker/batch_worker.py`; `git diff --stat` shows no worker change.
-- [ ] **Step 4: Run both suites** — Datagen `35 passed`, DataIndexing `8 passed`.
-- [ ] **Step 5: Commit** `S047 #76: test shard marker written last and replay skip` (stage the test file by name), push.
+- [x] **Step 2: Run** `.../runtime_data/venv/bin/python -m pytest Middleware/Workflows/Datagen/tests/test_batch_worker_markers.py -v` — Expected: 4 passed (code exists).
+- [x] **Step 3: RED by mutation** — temporarily (a) move the marker `put_object` above the record loop and (b) replace the head-check `return 0` with `pass`; run; Expected: fresh-shard / failed-shard tests fail under (a), replay test fails under (b). Restore with `git checkout -- Middleware/Workflows/Datagen/src/worker/batch_worker.py`; `git diff --stat` shows no worker change.
+- [x] **Step 4: Run both suites** — Datagen `35 passed`, DataIndexing `8 passed`.
+- [x] **Step 5: Commit** `S047 #76: test shard marker written last and replay skip` (stage the test file by name), push.
 
 ### Task 2: `main()` acks SQS only after success (Acceptance 5)
 
@@ -56,18 +56,21 @@
 - Consumes: `FakeS3`, `fakes` fixture, `MSG` from Task 1.
 - Produces: `FakeSQS(body: dict)` — `receive_message(**kw)` returns `{"Messages": [{"Body": json.dumps(body), "ReceiptHandle": "rh-1"}]}` once, then `{}`; `.deleted: list[str]` of receipt handles.
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
   - `test_main_deletes_message_after_success`: `main() == 0`; `sqs.deleted == ["rh-1"]`; marker exists.
   - `test_main_keeps_message_when_shard_fails`: `FakeS3(fail_on_put=1)`; `main() == 0`; `sqs.deleted == []`; no marker.
   - `test_main_deletes_message_on_replay_of_marked_shard`: marker pre-seeded; `main() == 0`; `sqs.deleted == ["rh-1"]`; no `put_object`.
-- [ ] **Step 2: Run** the file — Expected: 7 passed.
-- [ ] **Step 3: RED by mutation** — temporarily move `sqs.delete_message(...)` above the `try:`; Expected: `test_main_keeps_message_when_shard_fails` fails. Restore with `git checkout --`.
-- [ ] **Step 4: Run both suites** — Datagen `38 passed`, DataIndexing `8 passed`.
-- [ ] **Step 5: Commit** `S047 #76: test SQS ack only after shard success`, push.
+- [x] **Step 2: Run** the file — Expected: 7 passed.
+- [x] **Step 3: RED by mutation** — temporarily move `sqs.delete_message(...)` above the `try:`; Expected: `test_main_keeps_message_when_shard_fails` fails. Restore with `git checkout --`.
+- [x] **Step 4: Run both suites** — Datagen `38 passed`, DataIndexing `8 passed`.
+- [x] **Step 5: Commit** `S047 #76: test SQS ack only after shard success`, push.
 
 ## Ledger
 
 (Execution record; rulings as `Ruling: <what> — <why> — <cost if wrong>`.)
 - Ruling: executed inline with superpowers:executing-plans, not subagent-driven — both tasks share one test file's fakes (tightly coupled) and the plan is small; a fresh reviewer subagent reviews the whole branch at step 9 — cost if wrong: no per-task review gate.
-- Task 1 BASE 6b3b6f1. 4 tests green against unchanged worker. RED by mutation: (a) marker put before the loop → fresh-shard (after adding `puts.count(MARKER) == 1`) and failed-shard tests fail; (b) replay `return 0` → `pass` → replay test fails; (c) non-404 `raise` → `pass` → 403 test fails. Worker restored (`git diff` empty). Datagen 35 passed, DataIndexing 8 passed.
+- Task 1 BASE 70b3d21. 4 tests green against unchanged worker. RED by mutation: (a) marker put before the loop → fresh-shard (after adding `puts.count(MARKER) == 1`) and failed-shard tests fail; (b) replay `return 0` → `pass` → replay test fails; (c) non-404 `raise` → `pass` → 403 test fails. Worker restored (`git diff` empty). Datagen 35 passed, DataIndexing 8 passed.
 - Ruling: added `assert fakes.s3.puts.count(MARKER) == 1` to the fresh-shard test — mutation (a) showed "last" alone misses an early extra marker — cost if wrong: none (stricter).
+- Task 1: complete (commits 70b3d21..8f70356).
+- Task 2 BASE 8f70356. 3 `main()` tests green. RED by mutation: `sqs.delete_message` moved above `try:` → `test_main_keeps_message_when_shard_fails` fails; restored. Datagen 38 passed, DataIndexing 8 passed.
+- Task 2: complete (this commit).
