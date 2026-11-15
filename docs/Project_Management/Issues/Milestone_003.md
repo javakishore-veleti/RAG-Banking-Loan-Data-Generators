@@ -153,10 +153,10 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #80 | 2 | `/brainstorming Story #80: audit also runs the description-overlap check (uniqueness_check.py) and fails above the M003 limits` | Done | 2026-11-15 12:13 | 2026-11-15 12:14 |
 | #80 | 3 | `/using-git-worktrees Story #80: branch s050-description-overlap-audit` | Done | 2026-11-15 12:14 | 2026-11-15 12:14 |
 | #80 | 4 | `/writing-plans Story #80` | Done | 2026-11-15 12:14 | 2026-11-15 12:15 |
-| #80 | 5 | `/test-driven-development Story #80` | In progress | 2026-11-15 12:15 | - |
-| #80 | 6 | `/subagent-driven-development Story #80` | Planned | - | - |
-| #80 | 7 | `/rag-bank-loan-commit-push 80` after every task (repeat) | Planned | - | - |
-| #80 | 8 | `/verification-before-completion Story #80` | Planned | - | - |
+| #80 | 5 | `/test-driven-development Story #80` | Done | 2026-11-15 12:15 | 2026-11-15 12:15 |
+| #80 | 6 | `/subagent-driven-development Story #80` | Done | 2026-11-15 12:15 | 2026-11-15 12:17 |
+| #80 | 7 | `/rag-bank-loan-commit-push 80` after every task (repeat) | Done | 2026-11-15 12:17 | 2026-11-15 12:17 |
+| #80 | 8 | `/verification-before-completion Story #80` | In progress | 2026-11-15 12:17 | - |
 | #80 | 9 | `/requesting-code-review Story #80` | Planned | - | - |
 | #80 | 10 | `/rag-bank-loan-commit-push 80` | Planned | - | - |
 | #80 | 11 | `/finishing-a-development-branch Story #80` | Planned | - | - |
