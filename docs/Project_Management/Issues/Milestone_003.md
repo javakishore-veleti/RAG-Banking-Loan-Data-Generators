@@ -142,9 +142,9 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #79 | 3 | `/using-git-worktrees Story #79: branch s049-dedup-audit` | Done | 2026-11-15 12:04 | 2026-11-15 12:05 |
 | #79 | 4 | `/writing-plans Story #79` | Done | 2026-11-15 12:05 | 2026-11-15 12:06 |
 | #79 | 5 | `/test-driven-development Story #79` | Done | 2026-11-15 12:06 | 2026-11-15 12:06 |
-| #79 | 6 | `/subagent-driven-development Story #79` | In progress | 2026-11-15 12:06 | - |
-| #79 | 7 | `/rag-bank-loan-commit-push 79` after every task (repeat) | Planned | - | - |
-| #79 | 8 | `/verification-before-completion Story #79` | Planned | - | - |
+| #79 | 6 | `/subagent-driven-development Story #79` | Done | 2026-11-15 12:06 | 2026-11-15 12:08 |
+| #79 | 7 | `/rag-bank-loan-commit-push 79` after every task (repeat) | Done | 2026-11-15 12:08 | 2026-11-15 12:08 |
+| #79 | 8 | `/verification-before-completion Story #79` | In progress | 2026-11-15 12:08 | - |
 | #79 | 9 | `/requesting-code-review Story #79` | Planned | - | - |
 | #79 | 10 | `/rag-bank-loan-commit-push 79` | Planned | - | - |
 | #79 | 11 | `/finishing-a-development-branch Story #79` | Planned | - | - |

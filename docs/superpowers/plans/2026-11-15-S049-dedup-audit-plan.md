@@ -88,7 +88,14 @@ CLI wraps it with exit codes 0/1/2. CI generates a small run and audits it.
 - [ ] **Step 4: Run** → PASS; Datagen suite = 31 + 10 + 7.
 - [ ] **Step 5: Commit** `S049 #79: add dedup audit CLI with exit codes`.
 
-### Task 3: CI runs the audit on a generated run
+### Task 3: CI runs the audit on a generated run — NOT PUSHED (see ruling)
+
+> **Ruling (2026-11-15 12:09):** the push of `.github/workflows/ci.yml` was rejected
+> (`refusing to allow an OAuth App to create or update workflow … without workflow scope`).
+> The commit was dropped. A10 is met by the existing CI pytest step, which runs
+> `test_generated_run_audits_clean` (generator 200 records → audit exits 0) and
+> `test_cli_script_runs_standalone`. Cost if wrong: no separate CI log line for the audit.
+> Kishore can add the step below by hand (token with `workflow` scope).
 
 **Files:**
 - Modify: `.github/workflows/ci.yml` (after the `uniqueness_check.py` step)
