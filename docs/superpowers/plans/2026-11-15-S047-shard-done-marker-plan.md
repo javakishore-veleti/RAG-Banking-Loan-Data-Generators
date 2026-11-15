@@ -74,3 +74,16 @@
 - Task 1: complete (commits 70b3d21..8f70356).
 - Task 2 BASE 8f70356. 3 `main()` tests green. RED by mutation: `sqs.delete_message` moved above `try:` → `test_main_keeps_message_when_shard_fails` fails; restored. Datagen 38 passed, DataIndexing 8 passed.
 - Task 2: complete (this commit).
+
+## Code review (step 9, fresh reviewer subagent, range 35e0fd0..d4f7a51)
+
+Verdict: ready to merge, 0 Critical, 0 Important. Reviewer planted 7 extra regressions in a temp copy of the worker; each made a test fail.
+
+Minor findings and what was done (step 10):
+1. Dummy env values leaked to later test files → fixed: only names not already set are added, and they are popped right after the import.
+2. Dedup conditional-claim path of `FakeTable` unused → kept; noted in its docstring as used by S048 #77 (retry + dedup tests).
+3. Manifest check only counted lines → fixed: lines parsed as JSON, `doc_id` set equals the DynamoDB fake's keys.
+4. Rerun after failure did not check marker body / manifest → fixed: `files == 6` and manifest present.
+5. Fixture used two ways → fixed: `fakes.install(dedup_on=True)`.
+6. FakeS3 stores body only (not ContentType); `NoSuchKey` code untested → Ruling: left as is — fake internals are the builder's call and the 404 path already proves "missing marker → run"; cost if wrong: a ContentType regression goes unnoticed.
+Declined-to-judge items (dedup claims on retry, marker count with duplicates, retry keys/items) belong to S048 #77.
