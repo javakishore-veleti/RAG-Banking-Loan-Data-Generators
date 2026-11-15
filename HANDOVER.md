@@ -105,9 +105,13 @@ AWS_SECRET_ACCESS_KEY, AWS_REGION (= us-east-1), AWS_ACCOUNT_ID, PROJECT
 ## 4. Pending work and open decisions
 
 - M003 (7 open): F020 #75 + S047 #76, S048 #77 (dedup markers,
-  deterministic keys — exercised only in AWS runs, M004) and F021 #78 +
-  S049 #79, S050 #80 (dedup audits — only pass at scale, M005); E006 #6
-  closes when they do. F016, F018, F019 and E005 are DONE — do not redo.
+  deterministic keys) and F021 #78 + S049 #79, S050 #80 (dedup audits);
+  E006 #6 closes when they do. F016, F018, F019 and E005 are DONE — do not
+  redo. DECIDED 2026-11-15: M003 closes on LOCAL proof — worker tests with
+  in-memory S3/DynamoDB fakes (F020) and a local audit on a generated run
+  (F021). The live proof moves to the exit criteria that already need it:
+  M004 (1,000-record AWS run, markers + replay) and M005 (dedup audit clean
+  at 200k). Log: docs/Project_Management/Issues/Milestone_003.md.
 - M004/M005 (50 open): not started; M004 waits on M003.
 - M006/M007 (32 open): E011–E014, F037, F039, F040, F041–F044, S118 and
   their stories — all gated on a live index run.

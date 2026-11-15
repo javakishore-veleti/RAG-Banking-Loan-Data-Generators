@@ -200,11 +200,10 @@ Every skill that writes takes `dry-run`: nothing is changed, the would-be result
 - **PR → main**, merge only when CI is green. Git author is `git config user.*`; no
   `Co-Authored-By` or other AI trailer.
 - **Scratch files** go in `runtime_data/tmp/` (git-ignored), never `/tmp`.
-- **Open decision (asked 2026-11-15):** close M003 on local proof (worker tests with
-  in-memory S3/DynamoDB fakes, local audit on a generated run), with the live AWS proof moving
-  to the M004 / M005 exit criteria — or keep F020/F021 open until a live AWS run. HANDOVER.md
-  §2 currently says F020 is proven in AWS (M004) and F021 at scale (M005); it changes only if
-  Kishore picks local proof.
+- **Decision (2026-11-15): local proof.** F020 is proven by worker tests with in-memory
+  S3/DynamoDB fakes; F021 by a local audit on a generated run, with the same SQL kept ready
+  for Athena. The live AWS proof moves to the M004 / M005 exit criteria (HANDOVER.md §4).
+  No new dependencies: fakes are hand-written, not moto.
 - Feature #75's S048 text says "S003 keys"; it means S3 keys (typo in the issue, left as is).
 - `scripts/close_milestones.py` lists only M001 and M002; add M003 before closing the GitHub
   milestone with `close-milestones.yml`.
