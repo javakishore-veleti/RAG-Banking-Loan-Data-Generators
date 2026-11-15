@@ -6,6 +6,7 @@ manifest.jsonl. Within one format a natural key must appear once.
 """
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -19,7 +20,12 @@ from audit.dedup_audit import (  # noqa: E402
     ManifestError,
     find_duplicates,
     load_manifest,
+    main,
 )
+
+DATAGEN = Path(__file__).resolve().parents[1]
+GEN = DATAGEN / "src" / "generator" / "generator.py"
+AUDIT_PY = DATAGEN / "src" / "audit" / "dedup_audit.py"
 
 
 def _row(fmt, h, doc_id="txt_0000000", loan_id="LN1"):
@@ -91,3 +97,56 @@ def test_load_manifest_missing_natural_hash_names_line(tmp_path):
 def test_load_manifest_missing_file(tmp_path):
     with pytest.raises(ManifestError):
         load_manifest(tmp_path / "nope")
+
+
+# ---------------------------------------------------------------- CLI on a generated run
+
+def _generate(out):
+    subprocess.run([sys.executable, str(GEN), "--count", "200", "--seed", "7",
+                    "--formats", "txt,csv", "--out", str(out)],
+                   check=True, capture_output=True)
+
+
+@pytest.fixture
+def generated_run(tmp_path):
+    run = tmp_path / "run"
+    _generate(run)
+    return run
+
+
+def test_generated_run_audits_clean(generated_run, capsys):
+    assert main([str(generated_run)]) == 0
+    assert "400 manifest rows, 0 duplicate" in capsys.readouterr().out
+
+
+def test_cli_injected_duplicate_exits_1(generated_run, capsys):
+    manifest = generated_run / "manifest.jsonl"
+    first = manifest.read_text(encoding="utf-8").splitlines()[0]
+    with open(manifest, "a", encoding="utf-8") as fh:
+        fh.write(first + "\n")
+    h = json.loads(first)["natural_hash"]
+    assert main([str(generated_run)]) == 1
+    assert f"DUPLICATE format=txt natural_hash={h} count=2" in capsys.readouterr().out
+
+
+def test_replayed_run_is_reported(generated_run, capsys):
+    _generate(generated_run)  # same --out again: the manifest is appended
+    assert main([str(generated_run)]) == 1
+    assert "400 duplicate natural key(s)" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("case", ["missing", "empty", "no_hash"])
+def test_cli_bad_input_exits_2(tmp_path, capsys, case):
+    if case == "empty":
+        (tmp_path / "manifest.jsonl").write_text("", encoding="utf-8")
+    elif case == "no_hash":
+        _write(tmp_path, [{"doc_id": "pdf_0000000", "format": "pdf"}])
+    target = tmp_path / "nope" if case == "missing" else tmp_path
+    assert main([str(target)]) == 2
+    assert "ERROR" in capsys.readouterr().err
+
+
+def test_cli_script_runs_standalone(generated_run):
+    res = subprocess.run([sys.executable, str(AUDIT_PY), str(generated_run)],
+                         capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
