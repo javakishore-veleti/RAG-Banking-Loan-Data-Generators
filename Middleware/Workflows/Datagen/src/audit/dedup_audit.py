@@ -5,10 +5,16 @@ Runs sql/duplicate_natural_keys.sql (the query kept ready for Athena)
 on an in-memory sqlite table `manifest` built from manifest.jsonl.
 Within one format, a natural_hash must appear once (F019 natural key).
 
-Python stdlib only; no AWS calls.
+Usage:
+  python3 src/audit/dedup_audit.py <manifest.jsonl | run dir>
+
+Exit codes: 0 clean, 1 duplicates found, 2 bad input (missing or empty
+manifest, malformed row). Python stdlib only; no AWS calls.
 """
+import argparse
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 SQL_PATH = Path(__file__).resolve().parent / "sql" / "duplicate_natural_keys.sql"
@@ -58,3 +64,25 @@ def find_duplicates(rows):
         return [tuple(r) for r in con.execute(SQL_PATH.read_text(encoding="utf-8")).fetchall()]
     finally:
         con.close()
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Post-run dedup audit on a run's manifest (F021).")
+    ap.add_argument("manifest", help="manifest.jsonl, or the run directory that holds it")
+    args = ap.parse_args(argv)
+    try:
+        rows = load_manifest(args.manifest)
+        if not rows:
+            raise ManifestError(f"empty manifest: {args.manifest}")
+    except ManifestError as exc:
+        print(f"Dedup audit: ERROR {exc}", file=sys.stderr)
+        return 2
+    dups = find_duplicates(rows)
+    print(f"Dedup audit: {len(rows)} manifest rows, {len(dups)} duplicate natural key(s)")
+    for fmt, h, count in dups:
+        print(f"DUPLICATE format={fmt} natural_hash={h} count={count}")
+    return 1 if dups else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
