@@ -221,3 +221,6 @@ __marimo__/
 
 # Scratch for project skills (rag-bank-loan-*)
 runtime_data/
+
+# Story worktrees (using-git-worktrees)
+.worktrees/
