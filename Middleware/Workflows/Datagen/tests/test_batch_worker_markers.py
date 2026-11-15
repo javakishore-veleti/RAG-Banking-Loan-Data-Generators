@@ -11,6 +11,7 @@ in-memory fakes. No moto, no network, no AWS.
 """
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -267,3 +268,41 @@ def test_retry_with_dedup_matches_clean_run(fakes):
     assert retry.table.items == clean.table.items
     assert retry.dedup.items == clean.dedup.items
     assert retry.s3.objects[MANIFEST] == clean.s3.objects[MANIFEST]
+
+
+def test_retry_without_dedup_matches_clean_run(fakes):
+    clean = _run_clean(False)
+    retry = _run_crash_then_retry(False)
+    assert retry.returned == clean.returned == 6
+    assert retry.s3.objects[MARKER] == clean.s3.objects[MARKER]
+    assert _raw_keys(retry) == _raw_keys(clean)
+    assert retry.table.items == clean.table.items
+    assert retry.s3.objects[MANIFEST] == clean.s3.objects[MANIFEST]
+
+
+def test_retry_rewrites_identical_manifest_items(fakes):
+    retry = _run_crash_then_retry(False)
+    rewritten = 0
+    for doc_id, final in retry.table.items.items():
+        writes = [c for c in retry.table.calls if c["doc_id"] == doc_id]
+        assert all(w == final for w in writes), doc_id
+        rewritten += len(writes) > 1
+    # Record 0 (txt + csv) was written by the failed attempt and again
+    # by the retry, with identical values.
+    assert rewritten == 2
+
+
+def test_raw_keys_are_deterministic(fakes):
+    clean = _run_clean(False)
+    rows = [json.loads(line)
+            for line in clean.s3.objects[MANIFEST].decode().split("\n")]
+    assert len(rows) == 6
+    for r in rows:
+        fmt, idx = r["doc_id"].split("_")
+        assert re.fullmatch(r"\d{12}", r["loan_id"]), r["loan_id"]
+        assert r["s3_key"] == (
+            f"raw/{fmt}/year={r['year']}/month={r['month']:02d}/"
+            f"day={r['day']:02d}/loan_{idx}_{r['loan_id']}.{fmt}")
+        assert r["s3_key"] in clean.s3.objects
+    # A second clean run on fresh fakes lands on exactly the same keys.
+    assert _raw_keys(_run_clean(False)) == _raw_keys(clean)
