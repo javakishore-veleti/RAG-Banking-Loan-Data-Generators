@@ -129,8 +129,8 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #77 | 8 | `/verification-before-completion Story #77` | Done | 2026-11-15 12:14 | 2026-11-15 12:15 |
 | #77 | 9 | `/requesting-code-review Story #77` | Done | 2026-11-15 12:15 | 2026-11-15 12:16 |
 | #77 | 10 | `/rag-bank-loan-commit-push 77` | Done | 2026-11-15 12:16 | 2026-11-15 12:17 |
-| #77 | 11 | `/finishing-a-development-branch Story #77` | In progress | 2026-11-15 12:17 | - |
-| #77 | 12 | `/rag-bank-loan-story-complete 77` | Planned | - | - |
+| #77 | 11 | `/finishing-a-development-branch Story #77` | Done | 2026-11-15 12:17 | 2026-11-15 12:18 |
+| #77 | 12 | `/rag-bank-loan-story-complete 77` | In progress | 2026-11-15 12:18 | - |
 | Feature #75 | 1 | `/rag-bank-loan-feature-complete 75` | In progress | 2026-11-15 12:01 | - |
 
 ### F021 #78 - Post-run dedup audit
