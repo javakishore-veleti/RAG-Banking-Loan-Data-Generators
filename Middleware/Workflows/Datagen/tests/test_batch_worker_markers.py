@@ -174,3 +174,24 @@ def test_failed_shard_writes_no_marker_then_rerun_finishes(fakes):
     fakes.s3.fail_on_put = None
     assert batch_worker.process_shard(dict(MSG)) == 6
     assert fakes.s3.puts[-1] == MARKER
+
+
+def test_main_deletes_message_after_success(fakes):
+    assert batch_worker.main() == 0
+    assert fakes.sqs.deleted == ["rh-1"]
+    assert MARKER in fakes.s3.objects
+
+
+def test_main_keeps_message_when_shard_fails(fakes):
+    fakes.install(s3=FakeS3(fail_on_put=1))
+    assert batch_worker.main() == 0
+    # Message stays visible: SQS redrives it, then DLQ (invariant §12.5).
+    assert fakes.sqs.deleted == []
+    assert MARKER not in fakes.s3.objects
+
+
+def test_main_deletes_message_on_replay_of_marked_shard(fakes):
+    fakes.s3.objects[MARKER] = b'{"shard_id": "shard-0000", "files": 6}'
+    assert batch_worker.main() == 0
+    assert fakes.sqs.deleted == ["rh-1"]
+    assert fakes.s3.puts == []
