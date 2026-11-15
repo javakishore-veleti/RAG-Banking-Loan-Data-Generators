@@ -150,8 +150,8 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #79 | 11 | `/finishing-a-development-branch Story #79` | Done | 2026-11-15 12:11 | 2026-11-15 12:13 |
 | #79 | 12 | `/rag-bank-loan-story-complete 79` | In progress | 2026-11-15 12:13 | - |
 | #80 | 1 | `/rag-bank-loan-story-start 80` | Done | 2026-11-15 12:13 | 2026-11-15 12:13 |
-| #80 | 2 | `/brainstorming Story #80: audit also runs the description-overlap check (uniqueness_check.py) and fails above the M003 limits` | In progress | 2026-11-15 12:13 | - |
-| #80 | 3 | `/using-git-worktrees Story #80: branch s050-description-overlap-audit` | Planned | - | - |
+| #80 | 2 | `/brainstorming Story #80: audit also runs the description-overlap check (uniqueness_check.py) and fails above the M003 limits` | Done | 2026-11-15 12:13 | 2026-11-15 12:14 |
+| #80 | 3 | `/using-git-worktrees Story #80: branch s050-description-overlap-audit` | In progress | 2026-11-15 12:14 | - |
 | #80 | 4 | `/writing-plans Story #80` | Planned | - | - |
 | #80 | 5 | `/test-driven-development Story #80` | Planned | - | - |
 | #80 | 6 | `/subagent-driven-development Story #80` | Planned | - | - |
