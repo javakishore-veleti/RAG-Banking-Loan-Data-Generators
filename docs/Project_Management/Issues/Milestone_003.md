@@ -107,8 +107,8 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 
 | Issue | Step | Command | Status | Started | Completed |
 |---|---|---|---|---|---|
-| #76 | 1 | `/rag-bank-loan-story-start 76` | Planned | - | - |
-| #76 | 2 | `/brainstorming Story #76: worker `.done` marker - unit tests with in-memory S3/DynamoDB fakes; a replayed finished shard writes nothing; a shard without a marker runs` | Planned | - | - |
+| #76 | 1 | `/rag-bank-loan-story-start 76` | Done | 2026-11-15 12:01 | 2026-11-15 12:01 |
+| #76 | 2 | `/brainstorming Story #76: worker `.done` marker - unit tests with in-memory S3/DynamoDB fakes; a replayed finished shard writes nothing; a shard without a marker runs` | In progress | 2026-11-15 12:01 | - |
 | #76 | 3 | `/using-git-worktrees Story #76: branch s047-shard-done-marker` | Planned | - | - |
 | #76 | 4 | `/writing-plans Story #76` | Planned | - | - |
 | #76 | 5 | `/test-driven-development Story #76` | Planned | - | - |
@@ -131,14 +131,14 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #77 | 10 | `/rag-bank-loan-commit-push 77` | Planned | - | - |
 | #77 | 11 | `/finishing-a-development-branch Story #77` | Planned | - | - |
 | #77 | 12 | `/rag-bank-loan-story-complete 77` | Planned | - | - |
-| Feature #75 | 1 | `/rag-bank-loan-feature-complete 75` | Planned | - | - |
+| Feature #75 | 1 | `/rag-bank-loan-feature-complete 75` | In progress | 2026-11-15 12:01 | - |
 
 ### F021 #78 - Post-run dedup audit
 
 | Issue | Step | Command | Status | Started | Completed |
 |---|---|---|---|---|---|
-| #79 | 1 | `/rag-bank-loan-story-start 79` | Planned | - | - |
-| #79 | 2 | `/brainstorming Story #79: dedup audit script on a run's manifest - GROUP BY the natural key HAVING COUNT(*) > 1 returns 0 rows locally; same SQL kept ready for Athena` | Planned | - | - |
+| #79 | 1 | `/rag-bank-loan-story-start 79` | Done | 2026-11-15 12:01 | 2026-11-15 12:01 |
+| #79 | 2 | `/brainstorming Story #79: dedup audit script on a run's manifest - GROUP BY the natural key HAVING COUNT(*) > 1 returns 0 rows locally; same SQL kept ready for Athena` | In progress | 2026-11-15 12:01 | - |
 | #79 | 3 | `/using-git-worktrees Story #79: branch s049-dedup-audit` | Planned | - | - |
 | #79 | 4 | `/writing-plans Story #79` | Planned | - | - |
 | #79 | 5 | `/test-driven-development Story #79` | Planned | - | - |
@@ -161,13 +161,13 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #80 | 10 | `/rag-bank-loan-commit-push 80` | Planned | - | - |
 | #80 | 11 | `/finishing-a-development-branch Story #80` | Planned | - | - |
 | #80 | 12 | `/rag-bank-loan-story-complete 80` | Planned | - | - |
-| Feature #78 | 1 | `/rag-bank-loan-feature-complete 78` | Planned | - | - |
+| Feature #78 | 1 | `/rag-bank-loan-feature-complete 78` | In progress | 2026-11-15 12:01 | - |
 
 ### E006 #6 - Deduplication
 
 | Issue | Step | Command | Status | Started | Completed |
 |---|---|---|---|---|---|
-| Epic #6 | 1 | `/rag-bank-loan-epic-complete 6` | Planned | - | - |
+| Epic #6 | 1 | `/rag-bank-loan-epic-complete 6` | In progress | 2026-11-15 12:01 | - |
 
 ## 4. Project skills (`rag-bank-loan` = RAG Banking Loan corpus)
 
