@@ -72,7 +72,8 @@ not a pass.
   loan type) fails; the CLI exits 1 and prints `OVERLAP` lines.
 - [ ] B4 — Each limit is checked on its own: mean above 0.15 fails, same-type above 5% fails
   with a low mean, and values exactly at the limits pass.
-- [ ] B5 — A run with no txt documents, or a missing txt file, exits 2 with a message.
+- [ ] B5 — A run with no txt documents, or a missing txt file, exits 2 with a message. The
+  duplicate-key result is still computed and printed first (review fix: B5 must not hide B6).
 - [ ] B6 — S049 behaviour is unchanged: the duplicate-key tests still pass, and duplicates
   alone still exit 1.
 - [ ] B7 — No new dependencies; both suites pass and the new tests are collected.

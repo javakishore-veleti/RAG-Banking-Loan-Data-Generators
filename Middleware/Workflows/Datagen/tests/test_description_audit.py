@@ -190,3 +190,17 @@ def test_script_reports_bad_txt_as_exit_2(tmp_path):
                          capture_output=True, text=True)
     assert res.returncode == 2, res.stderr
     assert "not found" in res.stderr
+
+
+def test_duplicates_reported_even_without_txt(tmp_path, capsys):
+    run = tmp_path / "run"
+    _generate(run, formats="csv")
+    manifest = run / "manifest.jsonl"
+    first = manifest.read_text(encoding="utf-8").splitlines()[0]
+    with open(manifest, "a", encoding="utf-8") as fh:
+        fh.write(first + "\n")
+    assert main([str(run)]) == 2
+    captured = capsys.readouterr()
+    assert "1 duplicate natural key(s)" in captured.out
+    assert "DUPLICATE format=csv" in captured.out
+    assert "no txt" in captured.err
