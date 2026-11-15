@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""F021 / S049 #79 — post-run dedup audit on a run's manifest.
+"""F021 — post-run dedup audit on a run's manifest.
 
-Runs sql/duplicate_natural_keys.sql (the query kept ready for Athena)
-on an in-memory sqlite table `manifest` built from manifest.jsonl.
+S049 #79: runs sql/duplicate_natural_keys.sql (the query kept ready for
+Athena) on an in-memory sqlite table `manifest` built from manifest.jsonl.
 Within one format, a natural_hash must appear once (F019 natural key).
+S050 #80: also measures description overlap of the run's txt documents
+(F013 metric, description_audit.py) against the M003 limits.
 
 Usage:
   python3 src/audit/dedup_audit.py <manifest.jsonl | run dir>
 
-Exit codes: 0 clean, 1 duplicates found, 2 bad input (missing or empty
-manifest, malformed row). Python stdlib only; no AWS calls.
+Exit codes: 0 clean, 1 duplicates found or overlap above the limits,
+2 bad input (missing or empty manifest, malformed row, missing or
+unreadable txt document, no txt documents). Python stdlib only; no AWS calls.
 """
 import argparse
 import json
@@ -84,10 +87,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Post-run dedup audit on a run's manifest (F021).")
     ap.add_argument("manifest", help="manifest.jsonl, or the run directory that holds it")
     args = ap.parse_args(argv)
+    from audit.description_audit import limit_failures, load_descriptions, overlap_metrics
     try:
         rows = load_manifest(args.manifest)
         if not rows:
             raise ManifestError(f"empty manifest: {args.manifest}")
+        base = Path(args.manifest)
+        descriptions = load_descriptions(rows, base if base.is_dir() else base.parent)
     except ManifestError as exc:
         print(f"Dedup audit: ERROR {exc}", file=sys.stderr)
         return 2
@@ -95,8 +101,19 @@ def main(argv=None):
     print(f"Dedup audit: {len(rows)} manifest rows, {len(dups)} duplicate natural key(s)")
     for fmt, h, count in dups:
         print(f"DUPLICATE format={fmt} natural_hash={h} count={count}")
-    return 1 if dups else 0
+    m = overlap_metrics(descriptions)
+    fails = limit_failures(m)
+    print(f"Description overlap: {m['descriptions']} descriptions, {m['pairs']} pairs, "
+          f"wording-only mean={m['mean']:.3f} (limit 0.15), "
+          f"same-type >0.5={m['same_type_high_pct']:.2f}% (limit 5%)")
+    for msg in fails:
+        print(f"OVERLAP {msg}")
+    return 1 if dups or fails else 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Run through the package so audit.description_audit and this module
+    # share one ManifestError class (not a second copy under __main__).
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from audit.dedup_audit import main as _main
+    raise SystemExit(_main())
