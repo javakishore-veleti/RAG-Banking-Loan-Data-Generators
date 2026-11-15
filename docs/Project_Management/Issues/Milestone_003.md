@@ -110,8 +110,8 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #76 | 1 | `/rag-bank-loan-story-start 76` | Done | 2026-11-15 12:01 | 2026-11-15 12:01 |
 | #76 | 2 | `/brainstorming Story #76: worker `.done` marker - unit tests with in-memory S3/DynamoDB fakes; a replayed finished shard writes nothing; a shard without a marker runs` | Done | 2026-11-15 12:01 | 2026-11-15 12:04 |
 | #76 | 3 | `/using-git-worktrees Story #76: branch s047-shard-done-marker` | Done | 2026-11-15 12:04 | 2026-11-15 12:05 |
-| #76 | 4 | `/writing-plans Story #76` | In progress | 2026-11-15 12:05 | - |
-| #76 | 5 | `/test-driven-development Story #76` | Planned | - | - |
+| #76 | 4 | `/writing-plans Story #76` | Done | 2026-11-15 12:05 | 2026-11-15 12:06 |
+| #76 | 5 | `/test-driven-development Story #76` | In progress | 2026-11-15 12:06 | - |
 | #76 | 6 | `/subagent-driven-development Story #76` | Planned | - | - |
 | #76 | 7 | `/rag-bank-loan-commit-push 76` after every task (repeat) | Planned | - | - |
 | #76 | 8 | `/verification-before-completion Story #76` | Planned | - | - |
