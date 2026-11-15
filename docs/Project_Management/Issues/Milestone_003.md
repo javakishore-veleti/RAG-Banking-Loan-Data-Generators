@@ -158,8 +158,8 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #80 | 7 | `/rag-bank-loan-commit-push 80` after every task (repeat) | Done | 2026-11-15 12:17 | 2026-11-15 12:17 |
 | #80 | 8 | `/verification-before-completion Story #80` | Done | 2026-11-15 12:17 | 2026-11-15 12:17 |
 | #80 | 9 | `/requesting-code-review Story #80` | Done | 2026-11-15 12:17 | 2026-11-15 12:21 |
-| #80 | 10 | `/rag-bank-loan-commit-push 80` | In progress | 2026-11-15 12:21 | - |
-| #80 | 11 | `/finishing-a-development-branch Story #80` | Planned | - | - |
+| #80 | 10 | `/rag-bank-loan-commit-push 80` | Done | 2026-11-15 12:21 | 2026-11-15 12:21 |
+| #80 | 11 | `/finishing-a-development-branch Story #80` | In progress | 2026-11-15 12:21 | - |
 | #80 | 12 | `/rag-bank-loan-story-complete 80` | Planned | - | - |
 | Feature #78 | 1 | `/rag-bank-loan-feature-complete 78` | In progress | 2026-11-15 12:01 | - |
 
