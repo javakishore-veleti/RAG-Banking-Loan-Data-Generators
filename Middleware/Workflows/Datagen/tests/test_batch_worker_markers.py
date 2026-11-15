@@ -20,20 +20,27 @@ from botocore.exceptions import ClientError
 
 # The worker reads these at import time and builds boto3 clients (no
 # network call happens until a client method is used — and every client
-# is replaced by a fake below). setdefault never overwrites a real env.
-for _name, _value in {
+# is replaced by a fake below). Only names not already set are added, and
+# they are removed again right after the import so they cannot leak into
+# other test files.
+_DUMMY_ENV = {
     "CORPUS_BUCKET": "test-corpus-bucket",
     "MANIFEST_TABLE": "test-manifest-table",
     "QUEUE_URL": "https://sqs.invalid/000000000000/test-queue",
     "AWS_REGION": "ap-south-1",
     "AWS_ACCESS_KEY_ID": "testing",
     "AWS_SECRET_ACCESS_KEY": "testing",
-}.items():
-    os.environ.setdefault(_name, _value)
+}
+_ADDED_ENV = [n for n in _DUMMY_ENV if n not in os.environ]
+for _name in _ADDED_ENV:
+    os.environ[_name] = _DUMMY_ENV[_name]
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from worker import batch_worker  # noqa: E402
+
+for _name in _ADDED_ENV:
+    os.environ.pop(_name, None)
 
 MSG = {"shard_id": "shard-0000", "start": 0, "count": 3,
        "formats": ["txt", "csv"], "year": 2024, "seed": 7, "run_id": "t-run"}
@@ -76,7 +83,8 @@ class _ConditionalCheckFailed(Exception):
 
 
 class FakeTable:
-    """In-memory DynamoDB table keyed by `key` (doc_id or natural_hash)."""
+    """In-memory DynamoDB table keyed by `key` (doc_id or natural_hash).
+    The conditional-claim path is used by the S048 #77 retry tests."""
 
     def __init__(self, key):
         self.key = key
@@ -139,15 +147,18 @@ def test_fresh_shard_writes_files_then_marker_last(fakes):
     assert fakes.s3.puts[-2] == MANIFEST
     assert fakes.s3.puts[-1] == MARKER
     assert fakes.s3.puts.count(MARKER) == 1  # written once, after all data
-    assert len(fakes.s3.objects[MANIFEST].decode().split("\n")) == 6
+    rows = [json.loads(line)
+            for line in fakes.s3.objects[MANIFEST].decode().split("\n")]
+    assert len(rows) == 6
+    # The shard manifest lists exactly the rows upserted to DynamoDB.
+    assert {r["doc_id"] for r in rows} == set(fakes.table.items)
     assert json.loads(fakes.s3.objects[MARKER]) == {
         "shard_id": "shard-0000", "files": 6}
     assert len(fakes.table.items) == 6
 
 
 def test_replay_of_marked_shard_writes_nothing(fakes):
-    fakes.dedup_on = True
-    fakes.install()
+    fakes.install(dedup_on=True)
     fakes.s3.objects[MARKER] = b'{"shard_id": "shard-0000", "files": 6}'
     assert batch_worker.process_shard(dict(MSG)) == 0
     assert fakes.s3.puts == []
@@ -174,6 +185,8 @@ def test_failed_shard_writes_no_marker_then_rerun_finishes(fakes):
     fakes.s3.fail_on_put = None
     assert batch_worker.process_shard(dict(MSG)) == 6
     assert fakes.s3.puts[-1] == MARKER
+    assert json.loads(fakes.s3.objects[MARKER])["files"] == 6
+    assert MANIFEST in fakes.s3.objects
 
 
 def test_main_deletes_message_after_success(fakes):

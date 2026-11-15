@@ -114,9 +114,9 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #76 | 5 | `/test-driven-development Story #76` | Done | 2026-11-15 12:06 | 2026-11-15 12:07 |
 | #76 | 6 | `/subagent-driven-development Story #76` | Done | 2026-11-15 12:07 | 2026-11-15 12:07 |
 | #76 | 7 | `/rag-bank-loan-commit-push 76` after every task (repeat) | Done | 2026-11-15 12:07 | 2026-11-15 12:07 |
-| #76 | 8 | `/verification-before-completion Story #76` | In progress | 2026-11-15 12:07 | - |
-| #76 | 9 | `/requesting-code-review Story #76` | Planned | - | - |
-| #76 | 10 | `/rag-bank-loan-commit-push 76` | Planned | - | - |
+| #76 | 8 | `/verification-before-completion Story #76` | Done | 2026-11-15 12:07 | 2026-11-15 12:07 |
+| #76 | 9 | `/requesting-code-review Story #76` | Done | 2026-11-15 12:07 | 2026-11-15 12:10 |
+| #76 | 10 | `/rag-bank-loan-commit-push 76` | In progress | 2026-11-15 12:10 | - |
 | #76 | 11 | `/finishing-a-development-branch Story #76` | Planned | - | - |
 | #76 | 12 | `/rag-bank-loan-story-complete 76` | Planned | - | - |
 | #77 | 1 | `/rag-bank-loan-story-start 77` | Planned | - | - |
