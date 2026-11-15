@@ -140,8 +140,8 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #79 | 1 | `/rag-bank-loan-story-start 79` | Done | 2026-11-15 12:01 | 2026-11-15 12:01 |
 | #79 | 2 | `/brainstorming Story #79: dedup audit script on a run's manifest - GROUP BY the natural key HAVING COUNT(*) > 1 returns 0 rows locally; same SQL kept ready for Athena` | Done | 2026-11-15 12:01 | 2026-11-15 12:04 |
 | #79 | 3 | `/using-git-worktrees Story #79: branch s049-dedup-audit` | Done | 2026-11-15 12:04 | 2026-11-15 12:05 |
-| #79 | 4 | `/writing-plans Story #79` | In progress | 2026-11-15 12:05 | - |
-| #79 | 5 | `/test-driven-development Story #79` | Planned | - | - |
+| #79 | 4 | `/writing-plans Story #79` | Done | 2026-11-15 12:05 | 2026-11-15 12:06 |
+| #79 | 5 | `/test-driven-development Story #79` | In progress | 2026-11-15 12:06 | - |
 | #79 | 6 | `/subagent-driven-development Story #79` | Planned | - | - |
 | #79 | 7 | `/rag-bank-loan-commit-push 79` after every task (repeat) | Planned | - | - |
 | #79 | 8 | `/verification-before-completion Story #79` | Planned | - | - |
