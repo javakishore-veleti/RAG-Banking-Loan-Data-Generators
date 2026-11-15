@@ -123,8 +123,8 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #77 | 2 | `/brainstorming Story #77: retry of a half-finished shard gives the same S3 keys and identical DynamoDB rows; no duplicates` | Done | 2026-11-15 12:11 | 2026-11-15 12:12 |
 | #77 | 3 | `/using-git-worktrees Story #77: branch s048-deterministic-retry` | Done | 2026-11-15 12:12 | 2026-11-15 12:12 |
 | #77 | 4 | `/writing-plans Story #77` | Done | 2026-11-15 12:12 | 2026-11-15 12:13 |
-| #77 | 5 | `/test-driven-development Story #77` | In progress | 2026-11-15 12:13 | - |
-| #77 | 6 | `/subagent-driven-development Story #77` | Planned | - | - |
+| #77 | 5 | `/test-driven-development Story #77` | Done | 2026-11-15 12:13 | 2026-11-15 12:14 |
+| #77 | 6 | `/subagent-driven-development Story #77` | In progress | 2026-11-15 12:14 | - |
 | #77 | 7 | `/rag-bank-loan-commit-push 77` after every task (repeat) | Planned | - | - |
 | #77 | 8 | `/verification-before-completion Story #77` | Planned | - | - |
 | #77 | 9 | `/requesting-code-review Story #77` | Planned | - | - |

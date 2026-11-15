@@ -105,9 +105,9 @@ def process_shard(msg: dict) -> int:
                 # format is written. The hash identifies the loan content,
                 # not one file, so all formats of a duplicate are skipped
                 # together. A crash between claim and upload leaves the
-                # hash claimed with no file — the generator samples unique
-                # tuples without replacement, so a re-run with a fresh
-                # seed does not re-emit the same content (DESIGN.md §6).
+                # hash claimed with no file; the retry regenerates the
+                # same record (same doc_id + loan_id) and wins its own
+                # claim again, so it is written then (S048, DESIGN.md §6).
                 if not claim_natural_hash(
                         dedup_table, rec["natural_hash"],
                         f"{msg['formats'][0]}_{idx:07d}", rec["loan_id"]):
