@@ -1,6 +1,6 @@
 # Plan — `rag-bank-loan` project skills
 
-Date: 2026-11-15 · Owner: Kishore · Status: **Approved 2026-11-15** — in progress
+Date: 2026-11-15 · Owner: Kishore · Status: **Done 2026-11-15** — commits eaa90ad…34cbdfd + docs; Cursor check (Task 9) pending Kishore
 Design: `docs/superpowers/specs/2026-11-15-rag-bank-loan-project-skills-design.md` (approved)
 
 Already done (2026-11-15): Superpowers 7.0.2 at project scope, `gh` 2.104.0 installed and

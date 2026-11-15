@@ -177,3 +177,35 @@ AWS_SECRET_ACCESS_KEY, AWS_REGION (= us-east-1), AWS_ACCOUNT_ID, PROJECT
   is the status change. The close workflows (close-issues.yml,
   close-index-issues.yml) take their lists from scripts/close_issues.py
   and scripts/close_index_issues.py.
+
+## 6. Story workflow — Superpowers + `rag-bank-loan` skills (added 2026-11-15)
+
+Project code: `rag-bank-loan`. Every story runs the same 12 steps, one chat per story:
+
+| Step | Command |
+|---|---|
+| 1 | `/rag-bank-loan-story-start N` |
+| 2–6 | Superpowers: brainstorming → using-git-worktrees → writing-plans → test-driven-development → subagent-driven-development |
+| 7 | `/rag-bank-loan-commit-push N` after every task |
+| 8–9 | Superpowers: verification-before-completion → requesting-code-review |
+| 10 | `/rag-bank-loan-commit-push N` (review fixes) |
+| 11 | Superpowers: finishing-a-development-branch |
+| 12 | `/rag-bank-loan-story-complete N` |
+
+Then `/rag-bank-loan-feature-complete F` and `/rag-bank-loan-epic-complete E` when all
+children are closed. In Claude Code the Superpowers skills are `/superpowers:<name>`.
+
+- Skills live in `.claude/skills/rag-bank-loan-*/` (read by Claude Code, Cursor and Copilot);
+  `.agents/skills` links there for Codex. Superpowers is enabled per project in
+  `.claude/settings.json`.
+- Every skill that writes to GitHub accepts `dry-run`: it prints `WOULD RUN:` lines and the
+  new issue body in `runtime_data/tmp/` (git-ignored) and sends nothing.
+- The complete skills always stop for Kishore's yes before closing an issue.
+- Commits: `S047 #76: …`, `M008: …` or `Skills: …`; author Kishore only, never an AI
+  co-author trailer (mandatory).
+- Per-step log: `docs/Project_Management/Issues/Milestone_NNN.md`, created by hand from
+  `Milestone_TEMPLATE.md` when a milestone's first story starts. None exist yet.
+- `gh` is required and logged in on Kishore's laptop (installed 2026-11-15 to
+  `~/.local/bin/gh`; Homebrew there is broken).
+- Design and plan: `docs/superpowers/specs/2026-11-15-rag-bank-loan-project-skills-design.md`,
+  `docs/superpowers/plans/2026-11-15-rag-bank-loan-project-skills-plan.md`.

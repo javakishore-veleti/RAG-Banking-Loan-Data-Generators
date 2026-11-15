@@ -1,6 +1,6 @@
 # Design — `rag-bank-loan` project skills (harness-agnostic)
 
-Date: 2026-11-15 · Owner: Kishore · Status: **Approved 2026-11-15** (Q1–Q3 answered)
+Date: 2026-11-15 · Owner: Kishore · Status: **Built 2026-11-15** (Q1–Q3 answered; see plan)
 
 ## 1. Goal
 
