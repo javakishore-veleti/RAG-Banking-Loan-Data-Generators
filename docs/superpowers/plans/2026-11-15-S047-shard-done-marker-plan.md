@@ -68,3 +68,6 @@
 ## Ledger
 
 (Execution record; rulings as `Ruling: <what> — <why> — <cost if wrong>`.)
+- Ruling: executed inline with superpowers:executing-plans, not subagent-driven — both tasks share one test file's fakes (tightly coupled) and the plan is small; a fresh reviewer subagent reviews the whole branch at step 9 — cost if wrong: no per-task review gate.
+- Task 1 BASE 6b3b6f1. 4 tests green against unchanged worker. RED by mutation: (a) marker put before the loop → fresh-shard (after adding `puts.count(MARKER) == 1`) and failed-shard tests fail; (b) replay `return 0` → `pass` → replay test fails; (c) non-404 `raise` → `pass` → 403 test fails. Worker restored (`git diff` empty). Datagen 35 passed, DataIndexing 8 passed.
+- Ruling: added `assert fakes.s3.puts.count(MARKER) == 1` to the fresh-shard test — mutation (a) showed "last" alone misses an early extra marker — cost if wrong: none (stricter).
