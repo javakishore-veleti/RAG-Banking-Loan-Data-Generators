@@ -59,8 +59,8 @@ The 12-step story flow is the fixed contract (unchanged from CCAA):
 ### 4.1 Layout
 
 ```
-.agents/
-  skills/
+.claude/
+  skills/                          # real files (not a symlink)
     rag-bank-loan-story-start/SKILL.md
     rag-bank-loan-commit-push/SKILL.md
     rag-bank-loan-milestone-log/SKILL.md
@@ -68,15 +68,28 @@ The 12-step story flow is the fixed contract (unchanged from CCAA):
     rag-bank-loan-story-complete/SKILL.md
     rag-bank-loan-feature-complete/SKILL.md
     rag-bank-loan-epic-complete/SKILL.md
-.claude/skills  -> ../.agents/skills
-.cursor/skills  -> ../.agents/skills
-.github/skills  -> ../.agents/skills
+.agents/skills  -> ../.claude/skills   # Codex only
 docs/Project_Management/Issues/Milestone_NNN.md   # per-step log, one per milestone (§4.4)
 runtime_data/tmp/                                  # scratch, git-ignored
 ```
 
-The discovery path of each tool is verified as the first plan task. If a tool does not read its
-path, it is dropped from the list and noted, not worked around.
+**Task 1 result (2026-11-15), project skill folders each tool reads, per its own docs:**
+
+| Tool | Project folders it reads | Source |
+|---|---|---|
+| Claude Code | `.claude/skills/` (repo root and parents) | code.claude.com/docs/en/skills |
+| Cursor | `.cursor/skills/`, `.agents/skills/`, and `.claude/skills/` + `.codex/skills/` for compatibility | cursor.com/docs/context/skills |
+| GitHub Copilot (CLI, VS Code agent mode, cloud agent) | `.github/skills/` or `.claude/skills/` | docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-skills |
+| Codex | `.agents/skills/` (cwd up to repo root) | developers.openai.com/codex/skills |
+
+**Change from the first draft:** `.claude/skills/` is read natively by Claude Code, Cursor
+and Copilot, so it holds the real files. That needs no symlink for three of the four tools.
+It also avoids a reported Claude Code problem with a symlinked skills *directory*. Only
+Codex needs a link: `.agents/skills -> ../.claude/skills`. There is no `.cursor/skills` or
+`.github/skills` link, because Cursor and Copilot would then load each skill twice. Risk:
+Cursor also reads `.agents/skills`, so it may see each skill twice through the Codex link.
+The Cursor check in plan Task 9 confirms this. If Cursor shows duplicates, the Codex link is
+removed and Codex is noted as unsupported.
 
 ### 4.2 Repo-specific, not a generic port
 

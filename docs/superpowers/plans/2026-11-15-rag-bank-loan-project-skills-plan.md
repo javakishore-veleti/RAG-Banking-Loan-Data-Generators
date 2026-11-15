@@ -1,6 +1,6 @@
 # Plan — `rag-bank-loan` project skills
 
-Date: 2026-11-15 · Owner: Kishore · Status: **Draft — awaiting approval**
+Date: 2026-11-15 · Owner: Kishore · Status: **Approved 2026-11-15** — in progress
 Design: `docs/superpowers/specs/2026-11-15-rag-bank-loan-project-skills-design.md` (approved)
 
 Already done (2026-11-15): Superpowers 7.0.2 at project scope, `gh` 2.104.0 installed and
@@ -27,17 +27,15 @@ the project skill folder each reads.
   read project skills is dropped from the symlink list and noted there.
 - Files: `docs/superpowers/specs/2026-11-15-rag-bank-loan-project-skills-design.md`
 
-## Task 2 — Folder, symlinks, scratch dir
+## Task 2 — Folder, symlink, scratch dir (revised after Task 1, see design §4.1)
 
-- Red: `ls .agents/skills .claude/skills .cursor/skills .github/skills` fails.
-- Create `.agents/skills/` and relative symlinks to it from the folders confirmed in Task 1
-  (`ln -s ../.agents/skills .claude/skills`, …).
-- Add `runtime_data/` to `.gitignore`.
-- Green: `ls -l` shows each symlink pointing at `../.agents/skills`;
-  `git check-ignore runtime_data/tmp/x` prints the path; `git ls-files -s .claude/skills`
-  shows mode `120000` (stored as a symlink).
-- Files: `.agents/skills/.gitkeep`, `.claude/skills`, `.cursor/skills`, `.github/skills`,
-  `.gitignore`
+- Red: `ls .claude/skills .agents/skills` fails.
+- Create `.claude/skills/` (real folder) and the Codex link
+  `ln -s ../.claude/skills .agents/skills`. Add `runtime_data/` to `.gitignore`.
+- Green: `ls -l .agents` shows `skills -> ../.claude/skills`;
+  `git check-ignore runtime_data/tmp/x` prints the path; `git ls-files -s .agents/skills`
+  shows mode `120000`.
+- Files: `.claude/skills/.gitkeep`, `.agents/skills`, `.gitignore`
 
 ## Task 3 — `rag-bank-loan-commit-push`
 
@@ -46,10 +44,10 @@ the two `pytest` commands from `ci.yml` when Python under `Middleware/` changed;
 `git add -A`; never stage `runtime_data/`, `.env`, datasets, generated corpus files; author
 check and trailer strip written for any tool (mandatory); push and confirm not ahead.
 
-- Red: `test -f .agents/skills/rag-bank-loan-commit-push/SKILL.md` fails.
+- Red: `test -f .claude/skills/rag-bank-loan-commit-push/SKILL.md` fails.
 - Green: the file exists with `name` + `description` front matter; this task's own commit is
   made by following the skill, and `git log -1` shows Kishore as author and no trailer.
-- Files: `.agents/skills/rag-bank-loan-commit-push/SKILL.md`
+- Files: `.claude/skills/rag-bank-loan-commit-push/SKILL.md`
 
 ## Task 4 — `rag-bank-loan-progress-sync`
 
@@ -62,7 +60,7 @@ children by ID (`- **S047** …`), so the skill maps IDs to issue numbers with
 - Red: file missing.
 - Green: `dry-run` on feature **#75** (F020) shows `0 of 2 done — planned` with S047 → #76
   and S048 → #77; `dry-run` on epic **#6** shows `1 of 3 done` (F019 closed).
-- Files: `.agents/skills/rag-bank-loan-progress-sync/SKILL.md`
+- Files: `.claude/skills/rag-bank-loan-progress-sync/SKILL.md`
 
 ## Task 5 — `rag-bank-loan-milestone-log` + milestone file template
 
@@ -77,7 +75,7 @@ Template gives the CCAA sections (build order, grouping, step table, skills, not
   run the skill's steps against it with `begin`, then advance twice; the rows show
   Planned → In progress → Done with times from `date '+%F %H:%M'`. Real milestone files are
   not created in this plan (design Q3).
-- Files: `.agents/skills/rag-bank-loan-milestone-log/SKILL.md`,
+- Files: `.claude/skills/rag-bank-loan-milestone-log/SKILL.md`,
   `docs/Project_Management/Issues/Milestone_TEMPLATE.md`
 
 ## Task 6 — `rag-bank-loan-story-start`
@@ -91,7 +89,7 @@ milestone file if it exists; commit-push; replies with the next step of the 12-s
 - Red: file missing.
 - Green: `dry-run 188` (S121) prints the label commands for #188, #187 (F047), #182 (E015)
   and the new #188 body with only the Status line added.
-- Files: `.agents/skills/rag-bank-loan-story-start/SKILL.md`
+- Files: `.claude/skills/rag-bank-loan-story-start/SKILL.md`
 
 ## Task 7 — `rag-bank-loan-story-complete`
 
@@ -107,7 +105,7 @@ progress-sync on the feature.
 - Green: `dry-run` on closed story **#74** (S046) prints the would-be body, the commits found
   for `#74:` (none expected, since earlier commits did not use this form; the skill must
   say so, not fail), and the close-approval prompt; nothing is sent.
-- Files: `.agents/skills/rag-bank-loan-story-complete/SKILL.md`
+- Files: `.claude/skills/rag-bank-loan-story-complete/SKILL.md`
 
 ## Task 8 — `rag-bank-loan-feature-complete` and `rag-bank-loan-epic-complete`
 
@@ -118,14 +116,14 @@ and `GIT_ISSUES_SEQUENCING.md` status lines when the epic's milestone has no ope
 - Red: files missing.
 - Green: `dry-run` feature-complete on **#75** stops with "S047 #76, S048 #77 still open";
   `dry-run` epic-complete on **#5** (E005, all closed) reaches the approval prompt.
-- Files: `.agents/skills/rag-bank-loan-feature-complete/SKILL.md`,
-  `.agents/skills/rag-bank-loan-epic-complete/SKILL.md`
+- Files: `.claude/skills/rag-bank-loan-feature-complete/SKILL.md`,
+  `.claude/skills/rag-bank-loan-epic-complete/SKILL.md`
 
 ## Task 9 — Tool-neutral and discovery checks
 
-- `grep -rniE 'cursor|claude|copilot|codex' .agents/skills` returns only the one line about
+- `grep -rniE 'cursor|claude|copilot|codex' .claude/skills/rag-bank-loan-*` returns only the one line about
   Claude Code's `/superpowers:` prefix.
-- `grep -rn 'ccaa\|M02-\|local:api' .agents/skills` returns nothing.
+- `grep -rn 'ccaa\|M02-\|local:api' .claude/skills` returns nothing.
 - Claude Code: after `/reload-plugins`, the seven `rag-bank-loan-*` skills appear in the skill
   list. Other tools: Kishore opens the repo in Cursor once and confirms they are listed
   (the only check that needs him).
