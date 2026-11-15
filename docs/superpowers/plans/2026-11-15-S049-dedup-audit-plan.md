@@ -112,4 +112,23 @@ Spec coverage: A1 → T1 `test_sql_file_is_the_athena_query`; A2 → T1 `test_fi
 
 ## Review findings (step 9)
 
-_(filled in at step 9)_
+Reviewer: fresh general-purpose subagent (opus), range 35e0fd0..9a6e05d, 2026-11-15.
+Verdict: **With fixes**. Critical: none.
+
+- **Important #1 — fixed.** Non-`ManifestError` failures (list/dict values in bound columns →
+  `sqlite3.ProgrammingError`; invalid UTF-8; unreadable file) crashed with exit 1, which the
+  CLI reserves for "duplicates found". Fix: `_parse_row` requires `format`, `natural_hash`,
+  `doc_id`, `loan_id` to be strings when present; `UnicodeDecodeError` / `OSError` become
+  `ManifestError` (exit 2). Tests `test_cli_bad_input_exits_2[list_hash|dict_doc_id|bad_utf8]`
+  and `test_cli_unreadable_file_exits_2` RED→GREEN.
+- **Minor #2 — fixed by #1** (int `5` and str `"5"` hashes no longer collapse: non-strings rejected).
+- **Minor #3 — fixed.** CLI bad-input test now checks each message (`not found`, `empty manifest`,
+  `line 1` + `natural_hash`).
+- **Minor #4 — deferred.** Whole manifest held in memory as dicts; fine at M003 scale (200–1,000
+  records); stream rows into sqlite if the audit is run locally on 200k (M005).
+- **Minor #5 — follow-up for Kishore.** The dedicated CI step and the `py_compile` entry for
+  `dedup_audit.py` (Task 3 above) need a push token with the GitHub `workflow` scope.
+- **Minor #6 — accepted as is.** A1 test checks substrings; sqlite rejects a second statement at run time.
+- Declined-to-judge lines (hash case/whitespace, BOM, NaN in unused columns, worker rows without
+  `natural_hash`, policy manifests, Glue DDL, description overlap) — ruling: all stand as out of
+  scope per the spec; the worker gap is already a recorded follow-up.

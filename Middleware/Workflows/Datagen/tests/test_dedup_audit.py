@@ -135,15 +135,42 @@ def test_replayed_run_is_reported(generated_run, capsys):
     assert "400 duplicate natural key(s)" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("case", ["missing", "empty", "no_hash"])
-def test_cli_bad_input_exits_2(tmp_path, capsys, case):
+@pytest.mark.parametrize("case, expected", [
+    ("missing", ["not found"]),
+    ("empty", ["empty manifest"]),
+    ("no_hash", ["line 1", "natural_hash"]),
+    ("list_hash", ["line 1", "natural_hash", "string"]),
+    ("dict_doc_id", ["line 1", "doc_id", "string"]),
+    ("bad_utf8", ["UTF-8"]),
+])
+def test_cli_bad_input_exits_2(tmp_path, capsys, case, expected):
+    path = tmp_path / "manifest.jsonl"
     if case == "empty":
-        (tmp_path / "manifest.jsonl").write_text("", encoding="utf-8")
+        path.write_text("", encoding="utf-8")
     elif case == "no_hash":
         _write(tmp_path, [{"doc_id": "pdf_0000000", "format": "pdf"}])
+    elif case == "list_hash":
+        _write(tmp_path, [{"format": "txt", "natural_hash": ["a"]}])
+    elif case == "dict_doc_id":
+        _write(tmp_path, [{"format": "txt", "natural_hash": "a", "doc_id": {"x": 1}}])
+    elif case == "bad_utf8":
+        path.write_bytes(b'{"format": "txt", "natural_hash": "\xff"}\n')
     target = tmp_path / "nope" if case == "missing" else tmp_path
     assert main([str(target)]) == 2
-    assert "ERROR" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "ERROR" in err
+    for text in expected:
+        assert text in err
+
+
+def test_cli_unreadable_file_exits_2(tmp_path, capsys, monkeypatch):
+    _write(tmp_path, [_row("txt", "a")])
+
+    def _deny(*a, **k):
+        raise PermissionError("permission denied")
+    monkeypatch.setattr("builtins.open", _deny)
+    assert main([str(tmp_path)]) == 2
+    assert "permission denied" in capsys.readouterr().err
 
 
 def test_cli_script_runs_standalone(generated_run):
