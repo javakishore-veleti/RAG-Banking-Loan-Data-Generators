@@ -39,7 +39,7 @@ for _name in _ADDED_ENV:
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from worker import batch_worker  # noqa: E402
-from dedup.natural_hash import CLAIM_CONDITION  # noqa: E402
+from tests.test_natural_hash import claim_allowed  # noqa: E402
 
 for _name in _ADDED_ENV:
     os.environ.pop(_name, None)
@@ -86,9 +86,9 @@ class _ConditionalCheckFailed(Exception):
 
 class FakeTable:
     """In-memory DynamoDB table keyed by `key` (doc_id or natural_hash).
-    For the dedup table it applies the meaning of the claim condition
-    (dedup.natural_hash.CLAIM_CONDITION): the hash is free, or the stored
-    claim is the same record (same doc_id and loan_id)."""
+    For the dedup table it applies the meaning DynamoDB gives the claim
+    condition (claim_allowed in test_natural_hash: literal expressions,
+    not the module's constant)."""
 
     def __init__(self, key):
         self.key = key
@@ -99,14 +99,10 @@ class FakeTable:
                  ExpressionAttributeValues=None):
         self.calls.append(dict(Item))
         k = Item[self.key]
-        if ConditionExpression is not None:
-            assert ConditionExpression == CLAIM_CONDITION, ConditionExpression
-            vals = ExpressionAttributeValues or {}
-            old = self.items.get(k)
-            if old is not None and not (
-                    old["doc_id"] == vals.get(":doc_id")
-                    and old["loan_id"] == vals.get(":loan_id")):
-                raise _ConditionalCheckFailed()
+        if ConditionExpression is not None and not claim_allowed(
+                ConditionExpression, ExpressionAttributeValues,
+                self.items.get(k)):
+            raise _ConditionalCheckFailed()
         self.items[k] = dict(Item)
         return {}
 
@@ -306,3 +302,21 @@ def test_raw_keys_are_deterministic(fakes):
         assert r["s3_key"] in clean.s3.objects
     # A second clean run on fresh fakes lands on exactly the same keys.
     assert _raw_keys(_run_clean(False)) == _raw_keys(clean)
+
+
+def test_hash_claimed_by_another_record_is_still_skipped(fakes):
+    # A genuine duplicate: record 0's hash is held by a different doc_id
+    # (another record with the same content). The retry fix must not let
+    # it through: record 0 is skipped in both formats.
+    first = _run_clean(True)
+    rec0 = next(v for v in first.dedup.items.values()
+                if v["doc_id"] == "txt_0000000")
+    dedup = FakeTable("natural_hash")
+    dedup.items = {h: dict(v) for h, v in first.dedup.items.items()}
+    dedup.items[rec0["natural_hash"]]["doc_id"] = "txt_0999999"
+    ns = SimpleNamespace(s3=FakeS3(), table=FakeTable("doc_id"), dedup=dedup)
+    _wire(ns, True)
+    assert batch_worker.process_shard(dict(MSG)) == 4
+    assert json.loads(ns.s3.objects[MARKER])["files"] == 4
+    assert not any("loan_0000000_" in k for k in ns.s3.objects)
+    assert "txt_0000000" not in ns.table.items
