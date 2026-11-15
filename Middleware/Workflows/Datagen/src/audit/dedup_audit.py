@@ -92,15 +92,21 @@ def main(argv=None):
         rows = load_manifest(args.manifest)
         if not rows:
             raise ManifestError(f"empty manifest: {args.manifest}")
+    except ManifestError as exc:
+        print(f"Dedup audit: ERROR {exc}", file=sys.stderr)
+        return 2
+    # The duplicate-key result is always computed and printed first, so a
+    # bad or missing txt document never hides duplicates (exit 2 still wins).
+    dups = find_duplicates(rows)
+    print(f"Dedup audit: {len(rows)} manifest rows, {len(dups)} duplicate natural key(s)")
+    for fmt, h, count in dups:
+        print(f"DUPLICATE format={fmt} natural_hash={h} count={count}")
+    try:
         base = Path(args.manifest)
         descriptions = load_descriptions(rows, base if base.is_dir() else base.parent)
     except ManifestError as exc:
         print(f"Dedup audit: ERROR {exc}", file=sys.stderr)
         return 2
-    dups = find_duplicates(rows)
-    print(f"Dedup audit: {len(rows)} manifest rows, {len(dups)} duplicate natural key(s)")
-    for fmt, h, count in dups:
-        print(f"DUPLICATE format={fmt} natural_hash={h} count={count}")
     m = overlap_metrics(descriptions)
     fails = limit_failures(m)
     print(f"Description overlap: {m['descriptions']} descriptions, {m['pairs']} pairs, "

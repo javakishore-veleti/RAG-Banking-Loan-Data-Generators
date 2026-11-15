@@ -87,4 +87,22 @@ B1 → T1 `test_uses_the_f013_functions` + T2 generated run; B2 → T2 `test_gen
 
 ## Review findings (step 9)
 
-_(filled in at step 9)_
+Reviewer: fresh general-purpose subagent (opus), range 8cced43..c7f4b10, 2026-11-15.
+Verdict: **With fixes**. Critical: none. New tests were 18, not the predicted 13 (parametrized
+error cases plus a script-level test).
+
+- **Important #1 — fixed (plan conflict B5 vs B6).** A run without txt exited 2 before the
+  duplicate check ran, so S049's check was lost on csv-only runs. Ruling: `main` always
+  computes and prints the duplicate result first; missing or bad txt still exits 2 (keeps the
+  spec's anti-goal). Test `test_duplicates_reported_even_without_txt` RED→GREEN; suite 78/78.
+  B5 in the spec now says this. Also covers Minor #1 (duplicates hidden by a txt error).
+- Minor #2 — deferred: duplicate rows pointing to the same txt file inflate the overlap
+  figures on a replayed run (the exit is 1 anyway, because of the duplicates).
+- Minor #3 — deferred: a `file` value with `..` or an absolute path is read outside the run
+  directory (local audit of your own manifest; low risk).
+- Minor #4 — deferred: a non-string `file` or `loan_type` is reported as "missing".
+- Minor #5 — deferred: the output line types out the limits instead of using the constants.
+- Minor #6 — deferred: the output line does not print the same-type pair count.
+- Minor #7 — deferred: the "too short" wording means fewer than 5 non-numeric words.
+- Declined-to-judge (policy manifests, one-description vacuous pass, O(n²) at 200k, embeddings,
+  doc commits, old manifests without loan_type) — ruling: all stand as scoped by the spec.
