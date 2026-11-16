@@ -171,7 +171,7 @@ wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 2. S042 #69 ✅ Customer records reference a policy version (e.g. home-v2024-01).
 3. S043 #70 ✅ Policy docs are *not* generated at 200k/year — document why in DESIGN.md.
 
-### E006 #6 ⬜ Deduplication
+### E006 #6 ✅ Deduplication
 
 All E006 issues sit in M003. The plan lists this epic as "M003–M005"
 because the capability is *proven* across three phases: F019 defines the
