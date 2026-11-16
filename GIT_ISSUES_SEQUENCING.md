@@ -128,7 +128,7 @@ with Q&A. Exit criteria: 10 records × 6 formats verified; manifest complete.
 2. S026 #47 ✅ One run = one format + one year (200k/year target).
 ## M003: Uniqueness and Realism
 
-Status: **Open — 7 open, 29 closed (36 total)**. Goal: descriptions are
+Status: **Closed — 36 of 36** (2026-11-16). Goal: descriptions are
 unique enough for RAG; seeded from real artifacts. Exit criteria:
 wording-only mean ≤ 0.15, same-type > 0.5 ≤ 5% on 200 records.
 

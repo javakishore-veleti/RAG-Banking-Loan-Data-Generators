@@ -7,7 +7,7 @@ mean ≤ 0.15 and same-type pairs > 0.5 ≤ 5% on 200 records — **already met*
 E006 (Deduplication) is left: F020 shard markers / idempotency and F021 the post-run dedup
 audit. Out of scope: running in AWS (M004) and 200k-record scale (M005).
 
-**Status:** complete. 1 epics done, 2 features done, 4 stories done (0 left to build).
+**Status: complete.** 1 epic, 2 features and 4 stories done in this log (0 left to build); all 36 M003 issues closed (2026-11-16).
 
 **Done before this log (29 closed):** epics E004 #4, E005 #5; features F013–F019
 (#48, #52, #56, #60, #64, #67, #71); stories S027–S046 (#49–#74). See

@@ -26,11 +26,10 @@ now — stop all charges"). It completed the same day and was verified twice:
 
 Since the teardown, the code kept moving (all on main, CI green):
 - F016 real-artifact seeding, F018 policy corpus and F019 natural-hash
-  dedup are BUILT, pushed and their issues closed. M003 is 7 open /
-  29 closed (80%). E005 epic (#5) is closed.
-- The only open M003 items are E006 #6, F020 #75, F021 #78 and stories
-  S047 #76, S048 #77, S049 #79, S050 #80 — all gated on live AWS runs /
-  scale (see §4).
+  dedup are BUILT, pushed and their issues closed. E005 epic (#5) is closed.
+- M003 is CLOSED (36/36) as of 2026-11-16: E006 #6, F020 #75, F021 #78 and
+  stories S047 #76, S048 #77, S049 #79, S050 #80 were built (PRs #250–#253)
+  and closed on local proof (see §4).
 - API Services planning is done as issues: 3 new milestones M008–M010
   and 68 issues (#182–#249) for the local dev platform, the Entitlements
   API (FastAPI) and the container-image pattern. No service code yet.
@@ -46,7 +45,7 @@ milestone until the previous one's exit criteria pass.
 |---|---|---|---|---|
 | M001 | Foundation & Local Generator | CLOSED (12/12) | Generator core, data model | — |
 | M002 | Six Formats & Ground Truth | CLOSED (29/29) | All 6 format writers, manifest | — |
-| M003 | Uniqueness & Realism | Open (7 open / 29 closed) | Uniqueness control (F013–F015, done), realism + real-artifact seeding (F016–F018, done), dedup hash (F019, done), dedup markers + audit (F020–F021, open) | Wording-only mean ≤ 0.15, same-type >0.5 ≤ 5% on 200 records; dedup audit clean |
+| M003 | Uniqueness & Realism | CLOSED (36/36) | Uniqueness control (F013–F015), realism + real-artifact seeding (F016–F018), dedup hash (F019), dedup markers + audit (F020–F021) — all done | Wording-only mean ≤ 0.15, same-type >0.5 ≤ 5% on 200 records; dedup audit clean |
 | M004 | AWS Professional Pipeline | Open (30 open / 0 closed) | CloudFormation infra (F022–F024, F031), Batch execution (F025–F027) | One format + one year (1,000 records) runs end to end in AWS |
 | M005 | Scale & Hardening | Open (20 open / 0 closed) | Quality + release (F028–F030, F032–F033) | 200k for one format + one year completes; DLQ empty; dedup audit clean; teardown + data deletion verified |
 | M006 | Indexing Foundation & Pipeline | Open (14 open / 16 closed) | Indexing core, chunking, metadata, Bedrock embedder, pgvector/OpenSearch schemas | A small index run succeeds end to end |
@@ -104,15 +103,19 @@ AWS_SECRET_ACCESS_KEY, AWS_REGION (= us-east-1), AWS_ACCOUNT_ID, PROJECT
 
 ## 4. Pending work and open decisions
 
-- M003 (7 open): F020 #75 + S047 #76, S048 #77 (dedup markers,
-  deterministic keys) and F021 #78 + S049 #79, S050 #80 (dedup audits);
-  E006 #6 closes when they do. F016, F018, F019 and E005 are DONE — do not
-  redo. DECIDED 2026-11-15: M003 closes on LOCAL proof — worker tests with
+- M003: CLOSED 2026-11-16 (36/36). Exit criteria pass: wording-only mean
+  0.104 ≤ 0.15, same-type > 0.5 0.81% ≤ 5% (200 records, seed 7), dedup
+  audit clean (`src/audit/dedup_audit.py`). S048 fixed a real retry bug in
+  the dedup claim (`natural_hash.py`). Follow-ups: DOCX/XLSX zip timestamps
+  differ per attempt; worker manifest rows lack `natural_hash` (Athena audit
+  needs it); dedicated CI audit step needs a `workflow`-scope token;
+  `scripts/close_milestones.py` must list M003 before the GitHub milestone
+  is closed. DECIDED 2026-11-15: M003 closes on LOCAL proof — worker tests with
   in-memory S3/DynamoDB fakes (F020) and a local audit on a generated run
   (F021). The live proof moves to the exit criteria that already need it:
   M004 (1,000-record AWS run, markers + replay) and M005 (dedup audit clean
   at 200k). Log: docs/Project_Management/Issues/Milestone_003.md.
-- M004/M005 (50 open): not started; M004 waits on M003.
+- M004/M005 (50 open): not started; M003 is done, so M004 is next in its chain (needs the AWS rebuild, §3).
 - M006/M007 (32 open): E011–E014, F037, F039, F040, F041–F044, S118 and
   their stories — all gated on a live index run.
 - M008–M010 (68 open, #182–#249): local platform, Entitlements API,
