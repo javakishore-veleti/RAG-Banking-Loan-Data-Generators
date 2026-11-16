@@ -190,7 +190,7 @@ See HANDOVER.md §2 for the full explanation.
 1. S047 #76 ✅ Each shard writes a .done marker; replay skips finished shards.
 2. S048 #77 ✅ Deterministic S3 keys + DynamoDB upserts with identical values on retry.
 
-#### F021 #78 ⬜ Post-run dedup audit
+#### F021 #78 ✅ Post-run dedup audit
 
 1. S049 #79 ✅ Athena/Glue audit: GROUP BY <unique fields> HAVING COUNT(*) > 1 must return 0 rows.
 2. S050 #80 ✅ Audit the *description* overlap too (see F013) — not just IDs.
