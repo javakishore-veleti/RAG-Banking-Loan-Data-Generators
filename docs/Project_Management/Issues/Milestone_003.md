@@ -7,7 +7,7 @@ mean ≤ 0.15 and same-type pairs > 0.5 ≤ 5% on 200 records — **already met*
 E006 (Deduplication) is left: F020 shard markers / idempotency and F021 the post-run dedup
 audit. Out of scope: running in AWS (M004) and 200k-record scale (M005).
 
-**Status:** open. 0 epics done, 0 features done, 3 stories done (1 left to build).
+**Status:** open. 0 epics done, 0 features done, 4 stories done (0 left to build).
 
 **Done before this log (29 closed):** epics E004 #4, E005 #5; features F013–F019
 (#48, #52, #56, #60, #64, #67, #71); stories S027–S046 (#49–#74). See
@@ -160,7 +160,7 @@ After the last feature of an epic: one row `Epic #E | 1 | /rag-bank-loan-epic-co
 | #80 | 9 | `/requesting-code-review Story #80` | Done | 2026-11-15 12:17 | 2026-11-15 12:21 |
 | #80 | 10 | `/rag-bank-loan-commit-push 80` | Done | 2026-11-15 12:21 | 2026-11-15 12:21 |
 | #80 | 11 | `/finishing-a-development-branch Story #80` | Done | 2026-11-15 12:21 | 2026-11-15 12:22 |
-| #80 | 12 | `/rag-bank-loan-story-complete 80` | In progress | 2026-11-15 12:22 | - |
+| #80 | 12 | `/rag-bank-loan-story-complete 80` | Done | 2026-11-15 12:22 | 2026-11-16 11:50 |
 | Feature #78 | 1 | `/rag-bank-loan-feature-complete 78` | In progress | 2026-11-15 12:01 | - |
 
 ### E006 #6 - Deduplication

@@ -193,7 +193,7 @@ See HANDOVER.md §2 for the full explanation.
 #### F021 #78 ⬜ Post-run dedup audit
 
 1. S049 #79 ✅ Athena/Glue audit: GROUP BY <unique fields> HAVING COUNT(*) > 1 must return 0 rows.
-2. S050 #80 ⬜ Audit the *description* overlap too (see F013) — not just IDs.
+2. S050 #80 ✅ Audit the *description* overlap too (see F013) — not just IDs.
 
 ## M004: AWS Professional Pipeline
 
