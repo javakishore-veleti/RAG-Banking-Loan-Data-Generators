@@ -188,7 +188,7 @@ See HANDOVER.md §2 for the full explanation.
 #### F020 #75 ⬜ Shard marker and idempotency
 
 1. S047 #76 ✅ Each shard writes a .done marker; replay skips finished shards.
-2. S048 #77 ⬜ Deterministic S3 keys + DynamoDB upserts with identical values on retry.
+2. S048 #77 ✅ Deterministic S3 keys + DynamoDB upserts with identical values on retry.
 
 #### F021 #78 ⬜ Post-run dedup audit
 
