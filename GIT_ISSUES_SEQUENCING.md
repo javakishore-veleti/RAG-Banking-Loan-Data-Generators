@@ -185,7 +185,7 @@ See HANDOVER.md §2 for the full explanation.
 2. S045 #73 ✅ Compute natural_hash = SHA256(normalised unique fields) in the generator/worker.
 3. S046 #74 ✅ Claim the hash atomically in the dedup table (attribute_not_exists); skip on conflict.
 
-#### F020 #75 ⬜ Shard marker and idempotency
+#### F020 #75 ✅ Shard marker and idempotency
 
 1. S047 #76 ✅ Each shard writes a .done marker; replay skips finished shards.
 2. S048 #77 ✅ Deterministic S3 keys + DynamoDB upserts with identical values on retry.
